@@ -129,7 +129,7 @@ const handleGoogleLogin = () => {
             loading.value = false;
         }
     }).catch(error => {
-        console.warn("User closed Google popup", error);
+        console.warn();
     });
 };
 
