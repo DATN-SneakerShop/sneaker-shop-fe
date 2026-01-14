@@ -12,7 +12,7 @@
                     <router-link to="/">Quản lý người dùng</router-link>
                 </a-menu-item>
 
-                <a-menu-item v-if="userRole && userRole.toUpperCase() === 'ADMIN'" key="logs">
+                <a-menu-item v-if="userRole === 'ADMIN'" key="logs">
                     <template #icon><history-outlined /></template>
                     <router-link to="/logs">Nhật ký hệ thống</router-link>
                 </a-menu-item>
@@ -28,16 +28,10 @@
 
         <a-layout>
             <a-layout-header
-                style="background: #fff; padding: 0 24px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 4px rgba(0,21,41,.08)">
-                <span style="font-weight: bold; font-size: 16px"></span>
-
-                <div v-if="username" style="display: flex; align-items: center; gap: 12px">
-                    <router-link to="/profile">
-                        <a-tag color="blue" style="cursor: pointer">
-                            <template #icon><user-outlined /></template>
-                            Chào, {{ username }}
-                        </a-tag>
-                    </router-link>
+                style="background: #fff; padding: 0 24px; display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: bold">Bảng điều khiển</span>
+                <div style="display: flex; align-items: center; gap: 12px">
+                    <a-tag color="blue">Chào, {{ username }}</a-tag>
                     <a-tag color="orange" v-if="userRole">{{ userRole }}</a-tag>
                 </div>
             </a-layout-header>
@@ -47,79 +41,44 @@
                     <router-view />
                 </div>
             </a-layout-content>
-
-            <a-layout-footer style="text-align: center; color: #bfbfbf">
-                Sneaker Shop ©2026
-            </a-layout-footer>
         </a-layout>
     </a-layout>
 </template>
 
 <script setup>
-import { ref, watch, onMounted, createVNode } from 'vue';
+import { ref, watch, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { message, Modal } from 'ant-design-vue';
-import {
-    UserOutlined,
-    HistoryOutlined,
-    LogoutOutlined,
-    ExclamationCircleOutlined
-} from '@ant-design/icons-vue';
+import { Modal, message } from 'ant-design-vue';
+import { UserOutlined, HistoryOutlined, LogoutOutlined } from '@ant-design/icons-vue';
 
 const route = useRoute();
 const router = useRouter();
 const activeKey = ref('users');
 
-// Các biến trạng thái người dùng (Dùng ref để Vue có thể track thay đổi)
 const username = ref('');
 const userRole = ref('');
 
-// Hàm cập nhật thông tin từ LocalStorage
 const syncUserInfo = () => {
-    username.value = localStorage.getItem('username') || '';
+    username.value = localStorage.getItem('username') || 'Người dùng';
     userRole.value = localStorage.getItem('userRole') || '';
-    console.log("Current Role:", userRole.value); // Để bro debug trong console
 };
 
-// Logic Đăng xuất có xác nhận
 const handleLogout = () => {
     Modal.confirm({
         title: 'Xác nhận đăng xuất',
-        icon: createVNode(ExclamationCircleOutlined),
-        content: 'Bạn có chắc chắn muốn rời khỏi hệ thống không?',
-        okText: 'Đăng xuất',
-        okType: 'danger',
-        cancelText: 'Hủy',
+        content: 'Bạn có chắc chắn muốn rời khỏi hệ thống?',
         onOk() {
             localStorage.clear();
-            message.success('Đã đăng xuất thành công!');
+            message.success('Đã đăng xuất');
             router.push('/login');
         }
     });
 };
 
-// Theo dõi Route để highlight menu và cập nhật thông tin user
 watch(() => route.path, (path) => {
-    // 1. Highlight menu
-    if (path === '/logs') activeKey.value = 'logs';
-    else activeKey.value = 'users';
-
-    // 2. Ép cập nhật lại thông tin user mỗi khi chuyển trang
+    activeKey.value = path === '/logs' ? 'logs' : 'users';
     syncUserInfo();
 }, { immediate: true });
 
-onMounted(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-        router.push('/login');
-    } else {
-        syncUserInfo();
-    }
-});
+onMounted(syncUserInfo);
 </script>
-
-<style scoped>
-:deep(.ant-menu-item-selected.ant-menu-item-danger) {
-    background-color: rgba(255, 77, 79, 0.1);
-}
-</style>
