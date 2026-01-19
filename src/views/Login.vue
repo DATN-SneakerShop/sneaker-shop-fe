@@ -60,9 +60,6 @@ const loginForm = reactive({
     password: ''
 });
 
-/**
- * 1. BỘ QUY TẮC VALIDATE (Khớp với LoginRequest bên Backend)
- */
 const rules = {
     username: [
         { required: true, message: 'Vui lòng nhập tên đăng nhập!', trigger: 'blur' },
@@ -75,44 +72,54 @@ const rules = {
 };
 
 /**
- * 2. XỬ LÝ ĐĂNG NHẬP TRUYỀN THỐNG
+ * HÀM DÙNG CHUNG: LƯU TOKEN & CHUYỂN TRANG
+ */
+const saveAuthAndRedirect = (data) => {
+    localStorage.clear();
+    localStorage.setItem('accessToken', data.accessToken);
+    localStorage.setItem('username', data.username);
+    localStorage.setItem('fullName', data.fullName || data.username); // Lưu fullName để hiển thị UI
+
+    // Lưu mảng roles dưới dạng JSON string để isAdmin computed ở các trang khác hoạt động
+    const roles = Array.isArray(data.roles) ? data.roles : (data.role ? [data.role] : []);
+    localStorage.setItem('userRoles', JSON.stringify(roles));
+
+    setTimeout(() => {
+        window.location.href = '/';
+    }, 500);
+};
+
+/**
+ * 1. XỬ LÝ ĐĂNG NHẬP TRUYỀN THỐNG
  */
 const handleLogin = async () => {
-    loading.value = true;
     try {
-        // Gọi API login
+        loading.value = true;
         const res = await api.post('/auth/login', {
-            username: loginForm.username.trim(),
-            password: loginForm.password.trim()
+            username: loginForm.username,
+            password: loginForm.password
         });
 
-        // Lưu thông tin và chuyển trang
         saveAuthAndRedirect(res.data);
-        message.success('Đăng nhập thành công!');
-
+        message.success('Đăng nhập thành công');
     } catch (err) {
-        // Bắt các lỗi từ Backend (401: Sai tài khoản/mật khẩu, 403: Bị khóa, 400: Validate lỗi)
-        const errorMsg = err.response?.data || 'Hệ thống đang bận, vui lòng thử lại sau!';
-        message.error(errorMsg);
-        console.error("Login Error:", err);
+        console.error(err);
+        message.error(err.response?.data || 'Sai tài khoản hoặc mật khẩu');
     } finally {
         loading.value = false;
     }
 };
 
 /**
- * 3. XỬ LÝ ĐĂNG NHẬP GOOGLE
+ * 2. XỬ LÝ ĐĂNG NHẬP GOOGLE
  */
 const handleGoogleLogin = () => {
     googleTokenLogin().then(async (response) => {
         try {
             loading.value = true;
-
-            // Lấy profile từ Google Access Token
             const googleInfo = await fetch(`https://www.googleapis.com/oauth2/v3/userinfo?access_token=${response.access_token}`)
                 .then(res => res.json());
 
-            // Gửi sang Backend xử lý
             const res = await api.post('/auth/google-login', {
                 googleId: String(googleInfo.sub),
                 email: googleInfo.email,
@@ -121,31 +128,13 @@ const handleGoogleLogin = () => {
 
             saveAuthAndRedirect(res.data);
             message.success('Đăng nhập bằng Google thành công!');
-
         } catch (error) {
-            console.error("Google Login Error:", error);
-            message.error("Xác thực Google thất bại hoặc lỗi hệ thống!");
+            console.error(error);
+            message.error("Xác thực Google thất bại!");
         } finally {
             loading.value = false;
         }
-    }).catch(error => {
-        console.warn();
     });
-};
-
-/**
- * 4. HÀM DÙNG CHUNG: LƯU TOKEN & CHUYỂN TRANG
- */
-const saveAuthAndRedirect = (data) => {
-    localStorage.clear();
-    localStorage.setItem('accessToken', data.accessToken);
-    localStorage.setItem('username', data.username);
-    localStorage.setItem('userRole', data.role);
-
-    // Chuyển hướng sau 500ms để người dùng kịp thấy message success
-    setTimeout(() => {
-        window.location.href = '/';
-    }, 500);
 };
 </script>
 

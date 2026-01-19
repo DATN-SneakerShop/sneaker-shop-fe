@@ -27,6 +27,8 @@ api.interceptors.response.use(
       window.location.href = '/login';
     } else if (status === 403) {
       message.warning('Bạn không có quyền thực hiện hành động này!');
+    } else if (status === 500) {
+      message.error('Lỗi hệ thống (500), check lại Backend!');
     }
     return Promise.reject(error);
   }
