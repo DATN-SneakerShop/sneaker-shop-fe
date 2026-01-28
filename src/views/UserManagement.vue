@@ -92,9 +92,20 @@ const columns = [
 const filteredColumns = computed(() => isAdmin.value ? columns : columns.filter(c => c.key !== 'action'));
 
 const rules = {
-  username: [{ required: true, message: 'Bắt buộc' }],
+  username: [
+    { required: true, message: 'Bắt buộc nhập tên đăng nhập' },
+    { min: 5, message: 'Tên đăng nhập phải có ít nhất 5 ký tự', trigger: 'blur' }
+  ],
+
   fullName: [{ required: true, message: 'Bắt buộc' }],
+
   email: [{ required: true, type: 'email', message: 'Sai định dạng' }],
+
+  password: [
+    { required: true, message: 'Bắt buộc nhập mật khẩu' },
+    { min: 6, message: 'Mật khẩu phải từ 6 ký tự trở lên', trigger: 'blur' }
+  ],
+
   selectedRole: [{ required: true, message: 'Chọn 1 quyền' }]
 };
 
