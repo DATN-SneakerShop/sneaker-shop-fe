@@ -1,7 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainLayout from '../layouts/MainLayout.vue'
-import Login from '../views/Login.vue'
-import Register from '../views/Register.vue'
+// ĐÃ SỬA: Trỏ đúng vào folder login
+import Login from '../views/login/Login.vue'
+import Register from '../views/login/Register.vue'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -12,21 +13,22 @@ const router = createRouter({
       path: '/',
       component: MainLayout,
       children: [
-        { path: '', name: 'UserManagement', component: () => import('../views/UserManagement.vue') },
-        { path: 'profile', name: 'UserProfile', component: () => import('../views/UserProfile.vue') },
-        { path: 'logs', name: 'AuditLog', component: () => import('../views/AuditLog.vue') }
+        // ĐÃ SỬA: Import từ folder login cho khớp cấu trúc mới
+        { path: '', name: 'UserManagement', component: () => import('../views/login/UserManagement.vue') },
+        { path: 'profile', name: 'UserProfile', component: () => import('../views/login/UserProfile.vue') },
+        { path: 'logs', name: 'AuditLog', component: () => import('../views/login/AuditLog.vue') }
       ]
     }
   ]
 })
 
 router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('accessToken');
+  const token = localStorage.getItem('accessToken')
   if (!to.meta.isPublic && !token) {
-    next('/login');
+    next('/login')
   } else {
-    next();
+    next()
   }
-});
+})
 
-export default router;
+export default router
