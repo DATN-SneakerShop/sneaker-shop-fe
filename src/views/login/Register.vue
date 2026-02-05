@@ -1,110 +1,59 @@
 <template>
     <div class="auth-container">
         <div class="auth-card">
-            <h2 class="auth-title">TẠO TÀI KHOẢN</h2>
-
-            <a-form :model="registerForm" :rules="rules" ref="formRef" layout="vertical">
-                <a-form-item label="Tên đăng nhập" name="username">
-                    <a-input v-model:value="registerForm.username" placeholder="Ví dụ: hieund99" />
-                </a-form-item>
-
-                <a-form-item label="Email" name="email">
-                    <a-input v-model:value="registerForm.email" placeholder="email@example.com" />
-                </a-form-item>
-
+            <h2 class="auth-title">ĐĂNG KÝ TÀI KHOẢN</h2>
+            <a-form :model="registerForm" :rules="rules" ref="formRef" layout="vertical" @finish="handleRegister">
                 <a-form-item label="Họ và tên" name="fullName">
-                    <a-input v-model:value="registerForm.fullName" placeholder="Nhập tên của bạn" />
+                    <a-input v-model:value="registerForm.fullName" placeholder="Nguyễn Văn A" />
                 </a-form-item>
-
+                <a-form-item label="Email" name="email">
+                    <a-input v-model:value="registerForm.email" placeholder="example@gmail.com" />
+                </a-form-item>
                 <a-form-item label="Mật khẩu" name="password">
-                    <a-input-password v-model:value="registerForm.password" placeholder="Tối thiểu 6 ký tự" />
+                    <a-input-password v-model:value="registerForm.password" />
                 </a-form-item>
-
                 <a-form-item label="Xác nhận mật khẩu" name="confirmPassword">
-                    <a-input-password v-model:value="registerForm.confirmPassword" placeholder="Nhập lại mật khẩu" />
+                    <a-input-password v-model:value="registerForm.confirmPassword" />
                 </a-form-item>
-
-                <a-button type="primary" block size="large" :loading="loading" @click="handleRegister">
-                    ĐĂNG KÝ NGAY
-                </a-button>
-
-                <div class="auth-link">
-                    Đã có tài khoản? <router-link to="/login">Đăng nhập</router-link>
-                </div>
+                <a-button type="primary" block size="large" :loading="loading" html-type="submit">ĐĂNG KÝ</a-button>
+                <div class="footer-link">Đã có tài khoản? <router-link to="/login">Đăng nhập</router-link></div>
             </a-form>
         </div>
     </div>
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
-import { message } from 'ant-design-vue';
+import { reactive, ref } from 'vue';
 import api from '@/api/axios';
+import { message } from 'ant-design-vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
-const formRef = ref();
 const loading = ref(false);
+const registerForm = reactive({ fullName: '', email: '', password: '', confirmPassword: '' });
 
-const registerForm = reactive({
-    username: '',
-    email: '',
-    fullName: '',
-    password: '',
-    confirmPassword: ''
-});
-
-// BỘ QUY TẮC VALIDATE
 const rules = {
-    username: [
-        { required: true, message: 'Tên đăng nhập không được để trống' },
-        { min: 5, message: 'Tối thiểu 5 ký tự' },
-        { pattern: /^[a-zA-Z0-9]+$/, message: 'Không được chứa khoảng trắng hoặc ký tự đặc biệt' }
-    ],
-    email: [
-        { required: true, message: 'Email không được để trống' },
-        { type: 'email', message: 'Email không hợp lệ' }
-    ],
-    fullName: [
-        { required: true, message: 'Vui lòng nhập họ tên' }
-    ],
-    password: [
-        { required: true, message: 'Mật khẩu không được để trống' },
-        { min: 6, message: 'Mật khẩu phải từ 6 ký tự trở lên' }
-    ],
+    email: [{ required: true, type: 'email', message: 'Email không hợp lệ!' }],
+    fullName: [{ required: true, message: 'Vui lòng nhập họ tên!' }],
+    password: [{ required: true, min: 6, message: 'Tối thiểu 6 ký tự!' }],
     confirmPassword: [
-        { required: true, message: 'Vui lòng xác nhận mật khẩu' },
-        {
-            validator: async (_rule, value) => {
-                if (value !== registerForm.password) {
-                    throw new Error('Mật khẩu xác nhận không khớp!');
-                }
-            }
-        }
+        { required: true, message: 'Cần xác nhận mật khẩu!' },
+        { validator: async (_, v) => { if (v !== registerForm.password) throw new Error('Mật khẩu không khớp!'); } }
     ]
 };
 
 const handleRegister = async () => {
     try {
-        // 1. Chạy validate toàn bộ form ở FE
-        await formRef.value.validate();
-
         loading.value = true;
-        // 2. Gửi API lên BE
         await api.post('/auth/register', {
-            username: registerForm.username,
             email: registerForm.email,
             fullName: registerForm.fullName,
             password: registerForm.password
         });
-
-        message.success('Đăng ký thành công! Đang chuyển hướng...');
-        setTimeout(() => router.push('/login'), 1500);
+        message.success('Đăng ký thành công!');
+        router.push('/login');
     } catch (err) {
-        if (err.response) {
-            // Hiển thị lỗi từ BE (ví dụ: Username đã tồn tại)
-            message.error(err.response.data || 'Đăng ký thất bại');
-        }
+        message.error(err.response?.data || 'Lỗi đăng ký!');
     } finally {
         loading.value = false;
     }

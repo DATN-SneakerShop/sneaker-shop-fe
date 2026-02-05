@@ -20,15 +20,12 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const status = error.response?.status;
-    if (status === 401) {
-      message.error('Phiên hết hạn, vui lòng đăng nhập lại');
+    if (error.response?.status === 401) {
+      message.error('Phiên đăng nhập hết hạn!');
       localStorage.clear();
       window.location.href = '/login';
-    } else if (status === 403) {
-      message.warning('Bạn không có quyền thực hiện hành động này!');
-    } else if (status === 500) {
-      message.error('Lỗi hệ thống (500), check lại Backend!');
+    } else if (error.response?.status === 403) {
+      message.error('CẢNH BÁO: Hành động này bị hệ thống chặn do sai quyền!');
     }
     return Promise.reject(error);
   }
