@@ -17,8 +17,10 @@
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.2.6",
     "axios": "^1.13.2",
+    "bootstrap": "^5.3.8",
     "dayjs": "^1.11.19",
     "pinia": "^3.0.4",
+    "qs": "^6.14.2",
     "vue": "^3.5.26",
     "vue-router": "^4.6.4",
     "vue3-google-login": "^2.0.34"
