@@ -493,15 +493,17 @@ const saveAllVariants = async () => {
       </a-table>
     </a-card>
 
-    <a-modal
+  <a-modal
       v-model:open="openVariantModal"
       title="Thiết lập ma trận biến thể"
-      width="1600px"
+      width="1200px" 
+      style="top: 20px"
       :confirmLoading="loading"
       @ok="saveAllVariants"
       okText="Lưu toàn bộ biến thể"
       cancelText="Đóng"
       wrapClassName="variant-modal-wrap"
+      :bodyStyle="{ padding: '24px', background: '#f1f5f9' }"
     >
       <div class="variant-modal-layout">
         <!-- LEFT -->
@@ -885,6 +887,10 @@ const saveAllVariants = async () => {
 </template>
 
 <style scoped>
+/* =========================================
+   PHẦN 1: CSS DÀNH CHO GIAO DIỆN BÊN NGOÀI
+   (Giữ nguyên 100% code của mày)
+========================================= */
 .product-page {
   padding: 24px;
   min-height: 100vh;
@@ -957,36 +963,62 @@ const saveAllVariants = async () => {
   font-size: 12px;
   color: #8c8c8c;
 }
+</style>
 
-.variant-modal-layout {
+
+<style>
+/* =========================================
+   PHẦN 2: CSS TRỊ BỆNH CHO MODAL BIẾN THỂ
+   (Bỏ scoped, bọc wrapClassName, fix stretch)
+========================================= */
+
+/* ĐÃ SỬA: Đổi align-items từ start thành stretch để 2 cột luôn cao bằng nhau */
+.variant-modal-wrap .variant-modal-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(380px, 0.8fr);
   gap: 20px;
-  align-items: start;
+  align-items: stretch; 
 }
 
-.variant-left,
-.variant-right {
+/* ĐÃ SỬA: Đưa 2 cột về flex để chứa nội dung dãn tự động */
+.variant-modal-wrap .variant-left,
+.variant-modal-wrap .variant-right {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-.panel-card {
+.variant-modal-wrap .panel-card {
   border-radius: 16px;
   margin-bottom: 16px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
-.matrix-card {
+.variant-modal-wrap .matrix-card {
   background: linear-gradient(180deg, #f8fbff 0%, #f2f8ff 100%);
   border: 1px solid #d6e9ff;
 }
 
-.variant-list-card,
-.detail-card {
+/* ĐÃ SỬA: Cột danh sách biến thể tự dãn hết phần bên trái */
+.variant-modal-wrap .variant-list-card {
+  background: #fff;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.variant-modal-wrap .variant-list-card > .ant-card-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* Quan trọng để bảng cuộn được */
+}
+
+.variant-modal-wrap .detail-card {
   background: #fff;
 }
 
-.card-title-row {
+.variant-modal-wrap .card-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -994,40 +1026,40 @@ const saveAllVariants = async () => {
   font-weight: 700;
 }
 
-.matrix-description {
+.variant-modal-wrap .matrix-description {
   font-size: 12px;
   color: #8c8c8c;
   margin-bottom: 12px;
   line-height: 1.6;
 }
 
-.matrix-actions {
+.variant-modal-wrap .matrix-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 8px;
 }
 
-.list-header-row {
+.variant-modal-wrap .list-header-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: center;
 }
 
-.list-title {
+.variant-modal-wrap .list-title {
   font-weight: 700;
   font-size: 15px;
   color: #141414;
 }
 
-.list-meta {
+.variant-modal-wrap .list-meta {
   margin-top: 4px;
   font-size: 12px;
   color: #8c8c8c;
 }
 
-.quick-filter-box {
+.variant-modal-wrap .quick-filter-box {
   margin-bottom: 12px;
   padding: 12px;
   border-radius: 12px;
@@ -1035,7 +1067,7 @@ const saveAllVariants = async () => {
   border: 1px solid #eef2f7;
 }
 
-.quick-filter-actions {
+.variant-modal-wrap .quick-filter-actions {
   margin-top: 10px;
   display: flex;
   gap: 8px;
@@ -1043,29 +1075,31 @@ const saveAllVariants = async () => {
   justify-content: space-between;
 }
 
-.quick-table-wrap {
-  max-height: 600px;
+/* ĐÃ SỬA: Đổi max-height tĩnh thành flex để thu gọn vừa màn hình */
+.variant-modal-wrap .quick-table-wrap {
+  flex: 1;
   overflow: auto;
   border: 1px solid #f0f0f0;
   border-radius: 12px;
+  min-height: 300px;
 }
 
-.quick-variant-table {
+.variant-modal-wrap .quick-variant-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 960px;
   background: #fff;
 }
 
-.quick-variant-table th,
-.quick-variant-table td {
+.variant-modal-wrap .quick-variant-table th,
+.variant-modal-wrap .quick-variant-table td {
   border-bottom: 1px solid #f3f4f6;
   padding: 10px;
   text-align: left;
   vertical-align: middle;
 }
 
-.quick-variant-table thead th {
+.variant-modal-wrap .quick-variant-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -1075,19 +1109,19 @@ const saveAllVariants = async () => {
   font-weight: 700;
 }
 
-.quick-variant-table tbody tr:hover {
+.variant-modal-wrap .quick-variant-table tbody tr:hover {
   background: #f9fcff;
 }
 
-.quick-variant-table tbody tr.active {
+.variant-modal-wrap .quick-variant-table tbody tr.active {
   background: #edf6ff;
 }
 
-.quick-variant-table tbody tr.duplicate {
+.variant-modal-wrap .quick-variant-table tbody tr.duplicate {
   background: #fff2f0;
 }
 
-.table-thumb {
+.variant-modal-wrap .table-thumb {
   width: 48px;
   height: 48px;
   object-fit: cover;
@@ -1096,12 +1130,12 @@ const saveAllVariants = async () => {
   background: #fafafa;
 }
 
-.sticky-detail {
+.variant-modal-wrap .sticky-detail {
   position: sticky;
   top: 12px;
 }
 
-.selected-image-preview {
+.variant-modal-wrap .selected-image-preview {
   display: flex;
   gap: 16px;
   margin-bottom: 18px;
@@ -1111,7 +1145,7 @@ const saveAllVariants = async () => {
   border: 1px solid #edf2f7;
 }
 
-.selected-main-image {
+.variant-modal-wrap .selected-main-image {
   width: 96px;
   height: 96px;
   object-fit: cover;
@@ -1120,41 +1154,41 @@ const saveAllVariants = async () => {
   background: #fff;
 }
 
-.selected-image-info {
+.variant-modal-wrap .selected-image-info {
   flex: 1;
   min-width: 0;
 }
 
-.selected-image-label {
+.variant-modal-wrap .selected-image-label {
   font-size: 13px;
   font-weight: 700;
   color: #141414;
   margin-bottom: 6px;
 }
 
-.selected-image-path {
+.variant-modal-wrap .selected-image-path {
   font-size: 12px;
   color: #8c8c8c;
   word-break: break-all;
 }
 
-.gallery-block {
+.variant-modal-wrap .gallery-block {
   margin-top: 10px;
 }
 
-.gallery-title {
+.variant-modal-wrap .gallery-title {
   font-weight: 600;
   margin-bottom: 10px;
   color: #262626;
 }
 
-.gallery-grid {
+.variant-modal-wrap .gallery-grid {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.gallery-item-wrapper {
+.variant-modal-wrap .gallery-item-wrapper {
   position: relative;
   width: 72px;
   height: 72px;
@@ -1166,23 +1200,23 @@ const saveAllVariants = async () => {
   background: #fff;
 }
 
-.gallery-item-wrapper:hover {
+.variant-modal-wrap .gallery-item-wrapper:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
-.gallery-item-wrapper.active {
+.variant-modal-wrap .gallery-item-wrapper.active {
   border-color: #1677ff;
   box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
 }
 
-.gallery-img {
+.variant-modal-wrap .gallery-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.check-overlay {
+.variant-modal-wrap .check-overlay {
   position: absolute;
   inset: 0;
   background: rgba(22, 119, 255, 0.24);
@@ -1192,8 +1226,9 @@ const saveAllVariants = async () => {
   font-size: 18px;
 }
 
-.no-selection {
-  min-height: 620px;
+/* ĐÃ SỬA CHỐT HẠ BỆNH KHUYẾT: Bỏ min-height 620px, cho flex: 1 kéo dài chạm đáy */
+.variant-modal-wrap .no-selection {
+  flex: 1; 
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1202,47 +1237,43 @@ const saveAllVariants = async () => {
   border-radius: 18px;
 }
 
-.empty-big-icon {
+.variant-modal-wrap .empty-big-icon {
   font-size: 54px;
   color: #d9d9d9;
   margin-bottom: 14px;
 }
 
-.empty-title {
+.variant-modal-wrap .empty-title {
   font-size: 18px;
   font-weight: 700;
   color: #595959;
   margin-bottom: 6px;
 }
 
-.empty-desc {
+.variant-modal-wrap .empty-desc {
   font-size: 13px;
   color: #8c8c8c;
 }
 
-.w-full {
+.variant-modal-wrap .w-full {
   width: 100%;
 }
 
-.mt-3 {
+.variant-modal-wrap .mt-3 {
   margin-top: 16px;
 }
 
-.text-center {
+.variant-modal-wrap .text-center {
   text-align: center;
 }
 
 @media (max-width: 1400px) {
-  .variant-modal-layout {
+  .variant-modal-wrap .variant-modal-layout {
     grid-template-columns: 1fr;
   }
 
-  .sticky-detail {
+  .variant-modal-wrap .sticky-detail {
     position: static;
-  }
-
-  .no-selection {
-    min-height: 280px;
   }
 }
 </style>
