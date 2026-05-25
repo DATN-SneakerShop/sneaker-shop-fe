@@ -612,7 +612,7 @@ const canShowPaymentQr = computed(() => {
   if (!isBankTransferOrder.value) return false
 
   const status = String(order.value?.paymentStatus || '').toUpperCase()
-  if (['PAID', 'REFUNDED'].includes(status)) return false
+  if (['PAID', 'REFUNDED', 'FAILED'].includes(status)) return false
   if (String(order.value?.orderStatus || '').toUpperCase() === 'CANCELLED') return false
 
   return paymentDifference.value > 0 || ['UNPAID', 'PENDING', 'PARTIALLY_PAID'].includes(status)
@@ -620,6 +620,7 @@ const canShowPaymentQr = computed(() => {
 
 const transferStateTitle = computed(() => {
   if (!isBankTransferOrder.value) return ''
+  if (String(order.value?.paymentStatus || '').toUpperCase() === 'FAILED') return 'Thanh toán chuyển khoản lỗi'
   if (receivedAmount.value <= 0) return 'Chưa ghi nhận chuyển khoản'
   if (paymentDifference.value > 0) return 'Khách đang chuyển thiếu'
   if (paymentDifference.value < 0) return 'Khách đã chuyển dư'
@@ -628,6 +629,7 @@ const transferStateTitle = computed(() => {
 
 const transferStateClass = computed(() => {
   if (!isBankTransferOrder.value) return ''
+  if (String(order.value?.paymentStatus || '').toUpperCase() === 'FAILED') return 'is-underpaid'
   if (receivedAmount.value <= 0) return 'is-unpaid'
   if (paymentDifference.value > 0) return 'is-underpaid'
   if (paymentDifference.value < 0) return 'is-overpaid'
@@ -636,6 +638,10 @@ const transferStateClass = computed(() => {
 
 const transferStatusMessage = computed(() => {
   if (!isBankTransferOrder.value) return ''
+
+  if (String(order.value?.paymentStatus || '').toUpperCase() === 'FAILED') {
+    return order.value?.paymentErrorMessage || 'Thanh toán chuyển khoản lỗi. Bạn đã chuyển sai số tiền. Vui lòng liên hệ admin để được xử lý.'
+  }
 
   if (receivedAmount.value <= 0) {
     return `Đơn hàng chưa ghi nhận khoản chuyển nào. Khách cần thanh toán ${formatVnd(order.value?.finalAmount)}.`
@@ -774,7 +780,8 @@ function paymentStatusLabel(currentOrder) {
   const value = String(currentOrder?.paymentStatus || '').toUpperCase()
 
   if (String(currentOrder?.paymentMethod || '').toUpperCase() === 'BANK_TRANSFER') {
-    if (receivedAmount.value <= 0) return 'Chưa ghi nhận chuyển khoản'
+    if (String(order.value?.paymentStatus || '').toUpperCase() === 'FAILED') return 'Thanh toán chuyển khoản lỗi'
+  if (receivedAmount.value <= 0) return 'Chưa ghi nhận chuyển khoản'
     if (paymentDifference.value > 0) return `Chuyển thiếu ${formatVnd(paymentDifference.value)}`
     if (paymentDifference.value < 0) return `Chuyển dư ${formatVnd(Math.abs(paymentDifference.value))}`
     return 'Đã nhận đủ tiền'
@@ -837,9 +844,7 @@ async function handleLookup() {
     }
   } catch (e) {
     errorMessage.value =
-      e?.response?.data?.message ||
-      e?.response?.data ||
-      'Không tìm thấy đơn hàng. Vui lòng kiểm tra lại mã đơn.'
+      getErrorMessage(e, 'Không tìm thấy đơn hàng. Vui lòng kiểm tra lại mã đơn.')
   } finally {
     loading.value = false
   }

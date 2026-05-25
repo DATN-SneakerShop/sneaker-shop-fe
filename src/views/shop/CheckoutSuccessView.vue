@@ -66,6 +66,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { getSepayPaymentInfo } from '@/api/checkout.api'
 
 const route = useRoute()
@@ -114,7 +115,7 @@ async function loadPaymentInfo() {
       message.success('Hệ thống đã ghi nhận thanh toán thành công')
     }
   } catch (e) {
-    message.error(e.response?.data?.message || e.response?.data || 'Không lấy được thông tin thanh toán')
+    message.error(getErrorMessage(e, 'Không lấy được thông tin thanh toán'))
   } finally {
     loading.value = false
   }

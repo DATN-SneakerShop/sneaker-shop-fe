@@ -41,7 +41,8 @@
 <script setup>
 import { ref } from 'vue';
 import api from '@/api/axios';
-import { message } from 'ant-design-vue';
+import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -61,7 +62,7 @@ const handleSendOtp = async () => {
         message.success('Mã OTP đã được gửi đi!');
         step.value = 2; // Chuyển sang hiện ô nhập OTP
     } catch (err) {
-        message.error(err.response?.data || 'Gửi mail thất bại!');
+        message.error(getErrorMessage(err, 'Gửi mail thất bại!'));
     } finally {
         loading.value = false;
     }
@@ -89,7 +90,7 @@ const handleResetPassword = async () => {
         message.success('Đổi mật khẩu thành công!');
         router.push('/login');
     } catch (err) {
-        message.error(err.response?.data || 'Lỗi! Có thể OTP đã hết hạn.');
+        message.error(getErrorMessage(err, 'Lỗi! Có thể OTP đã hết hạn.'));
     } finally {
         loading.value = false;
     }

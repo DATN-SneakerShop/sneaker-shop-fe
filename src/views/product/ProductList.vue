@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import {
   SyncOutlined,
   PlusOutlined,
@@ -118,6 +119,14 @@ const totalStock = computed(() =>
   variantsList.value.reduce((sum, v) => sum + Number(v.stock || 0), 0)
 )
 
+const totalReservedStock = computed(() =>
+  variantsList.value.reduce((sum, v) => sum + Number(v.reservedQuantity || 0), 0)
+)
+
+const totalAvailableStock = computed(() =>
+  variantsList.value.reduce((sum, v) => sum + Number(v.availableStock ?? Math.max(0, Number(v.stock || 0) - Number(v.reservedQuantity || 0))), 0)
+)
+
 const totalVariantCount = computed(() => variantsList.value.length)
 
 const duplicateVariantKeys = computed(() => {
@@ -144,6 +153,8 @@ const resetVariantStates = () => {
     sku: '',
     price: 0,
     stock: 0,
+    reservedQuantity: 0,
+    availableStock: 0,
     imageUrl: ''
   }
 
@@ -164,6 +175,8 @@ const handleOpenVariantMatrix = async (record) => {
     colorway: v.colorway || '',
     size: v.size || '',
     stock: Number(v.stock || 0),
+    reservedQuantity: Number(v.reservedQuantity || 0),
+    availableStock: Number(v.availableStock ?? Math.max(0, Number(v.stock || 0) - Number(v.reservedQuantity || 0))),
     price: Number(v.price ?? v.salePrice ?? res.data.price ?? 0),
     imageUrl: v.imageUrl || '',
     sku: v.sku || ''
@@ -199,7 +212,9 @@ const generateMatrix = () => {
       variantsList.value[existedIndex] = {
         ...variantsList.value[existedIndex],
         price: Number(matrixPrice.value || 0),
-        stock: Number(matrixStock.value || 0)
+        stock: Number(matrixStock.value || 0),
+        reservedQuantity: 0,
+        availableStock: Number(matrixStock.value || 0)
       }
       updatedCount++
     } else {
@@ -212,6 +227,8 @@ const generateMatrix = () => {
         colorway: c,
         size: s,
         stock: Number(matrixStock.value || 0),
+        reservedQuantity: Number(old?.reservedQuantity || 0),
+        availableStock: Number(old?.availableStock ?? Math.max(0, Number(matrixStock.value || 0) - Number(old?.reservedQuantity || 0))),
         price: Number(matrixPrice.value || 0),
         imageUrl: old ? old.imageUrl || '' : '',
         sku: old ? old.sku || '' : ''
@@ -237,6 +254,8 @@ const addSingleVariant = () => {
     colorway: '',
     size: '',
     stock: Number(matrixStock.value || 0),
+    reservedQuantity: 0,
+    availableStock: Number(matrixStock.value || 0),
     price: Number(matrixPrice.value || currentProduct.value?.price || 0),
     imageUrl: '',
     sku: ''
@@ -264,12 +283,17 @@ const syncDetailToVariant = () => {
     ...variantsList.value[selectedIdx.value],
     ...detailForm.value,
     stock: Number(detailForm.value.stock || 0),
+    reservedQuantity: Number(detailForm.value.reservedQuantity || 0),
+    availableStock: Math.max(0, Number(detailForm.value.stock || 0) - Number(detailForm.value.reservedQuantity || 0)),
     price: Number(detailForm.value.price || 0)
   }
 }
 
 const updateVariantField = (variant, field, value) => {
   variant[field] = field === 'stock' || field === 'price' ? Number(value || 0) : value
+  if (field === 'stock') {
+    variant.availableStock = Math.max(0, Number(variant.stock || 0) - Number(variant.reservedQuantity || 0))
+  }
   variantsList.value = [...variantsList.value]
 
   const realIndex = variantsList.value.findIndex(v => v === variant)
@@ -409,8 +433,8 @@ const saveAllVariants = async () => {
     openVariantModal.value = false
     fetchProducts()
   } catch (e) {
-    console.error('Lỗi khi lưu Product:', e?.response?.data || e)
-    message.error(e?.response?.data?.message || 'Lỗi lưu dữ liệu! Vui lòng kiểm tra console.')
+    console.error('Lỗi khi lưu Product:', getErrorMessage(e, 'Thao tác thất bại'))
+    message.error(getErrorMessage(e, 'Lỗi lưu dữ liệu! Vui lòng kiểm tra console.'))
   } finally {
     loading.value = false
   }
@@ -493,17 +517,15 @@ const saveAllVariants = async () => {
       </a-table>
     </a-card>
 
-  <a-modal
+    <a-modal
       v-model:open="openVariantModal"
       title="Thiết lập ma trận biến thể"
-      width="1200px" 
-      style="top: 20px"
+      width="1600px"
       :confirmLoading="loading"
       @ok="saveAllVariants"
       okText="Lưu toàn bộ biến thể"
       cancelText="Đóng"
       wrapClassName="variant-modal-wrap"
-      :bodyStyle="{ padding: '24px', background: '#f1f5f9' }"
     >
       <div class="variant-modal-layout">
         <!-- LEFT -->
@@ -650,14 +672,16 @@ const saveAllVariants = async () => {
                     <th>Size</th>
                     <th>SKU</th>
                     <th>Giá</th>
-                    <th>Tồn</th>
+                    <th>Tồn thực tế</th>
+                    <th>Đang giữ</th>
+                    <th>Có thể bán</th>
                     <th>Chi tiết</th>
                     <th>Xóa</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr v-if="filteredVariants.length === 0">
-                    <td colspan="8">
+                    <td colspan="10">
                       <a-empty description="Chưa có biến thể phù hợp" />
                     </td>
                   </tr>
@@ -723,6 +747,16 @@ const saveAllVariants = async () => {
                         style="width: 90px"
                         @change="val => updateVariantField(variant, 'stock', val)"
                       />
+                    </td>
+
+                    <td>
+                      <a-tag color="orange">{{ Number(variant.reservedQuantity || 0) }}</a-tag>
+                    </td>
+
+                    <td>
+                      <a-tag :color="Number(variant.availableStock ?? Math.max(0, Number(variant.stock || 0) - Number(variant.reservedQuantity || 0))) > 0 ? 'green' : 'red'">
+                        {{ Number(variant.availableStock ?? Math.max(0, Number(variant.stock || 0) - Number(variant.reservedQuantity || 0))) }}
+                      </a-tag>
                     </td>
 
                     <td>
@@ -805,12 +839,32 @@ const saveAllVariants = async () => {
                 </a-col>
 
                 <a-col :span="12">
-                  <a-form-item label="Tồn kho">
+                  <a-form-item label="Tồn kho thực tế">
                     <a-input-number
                       v-model:value="detailForm.stock"
                       class="w-full"
                       :min="0"
                       @change="syncDetailToVariant"
+                    />
+                  </a-form-item>
+                </a-col>
+
+                <a-col :span="12">
+                  <a-form-item label="Đang giữ chỗ">
+                    <a-input-number
+                      v-model:value="detailForm.reservedQuantity"
+                      class="w-full"
+                      disabled
+                    />
+                  </a-form-item>
+                </a-col>
+
+                <a-col :span="12">
+                  <a-form-item label="Có thể bán">
+                    <a-input-number
+                      :value="Number(detailForm.availableStock ?? Math.max(0, Number(detailForm.stock || 0) - Number(detailForm.reservedQuantity || 0)))"
+                      class="w-full"
+                      disabled
                     />
                   </a-form-item>
                 </a-col>
@@ -887,10 +941,6 @@ const saveAllVariants = async () => {
 </template>
 
 <style scoped>
-/* =========================================
-   PHẦN 1: CSS DÀNH CHO GIAO DIỆN BÊN NGOÀI
-   (Giữ nguyên 100% code của mày)
-========================================= */
 .product-page {
   padding: 24px;
   min-height: 100vh;
@@ -963,62 +1013,36 @@ const saveAllVariants = async () => {
   font-size: 12px;
   color: #8c8c8c;
 }
-</style>
 
-
-<style>
-/* =========================================
-   PHẦN 2: CSS TRỊ BỆNH CHO MODAL BIẾN THỂ
-   (Bỏ scoped, bọc wrapClassName, fix stretch)
-========================================= */
-
-/* ĐÃ SỬA: Đổi align-items từ start thành stretch để 2 cột luôn cao bằng nhau */
-.variant-modal-wrap .variant-modal-layout {
+.variant-modal-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(380px, 0.8fr);
   gap: 20px;
-  align-items: stretch; 
+  align-items: start;
 }
 
-/* ĐÃ SỬA: Đưa 2 cột về flex để chứa nội dung dãn tự động */
-.variant-modal-wrap .variant-left,
-.variant-modal-wrap .variant-right {
+.variant-left,
+.variant-right {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
 }
 
-.variant-modal-wrap .panel-card {
+.panel-card {
   border-radius: 16px;
   margin-bottom: 16px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
 }
 
-.variant-modal-wrap .matrix-card {
+.matrix-card {
   background: linear-gradient(180deg, #f8fbff 0%, #f2f8ff 100%);
   border: 1px solid #d6e9ff;
 }
 
-/* ĐÃ SỬA: Cột danh sách biến thể tự dãn hết phần bên trái */
-.variant-modal-wrap .variant-list-card {
-  background: #fff;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.variant-modal-wrap .variant-list-card > .ant-card-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0; /* Quan trọng để bảng cuộn được */
-}
-
-.variant-modal-wrap .detail-card {
+.variant-list-card,
+.detail-card {
   background: #fff;
 }
 
-.variant-modal-wrap .card-title-row {
+.card-title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1026,40 +1050,40 @@ const saveAllVariants = async () => {
   font-weight: 700;
 }
 
-.variant-modal-wrap .matrix-description {
+.matrix-description {
   font-size: 12px;
   color: #8c8c8c;
   margin-bottom: 12px;
   line-height: 1.6;
 }
 
-.variant-modal-wrap .matrix-actions {
+.matrix-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 8px;
 }
 
-.variant-modal-wrap .list-header-row {
+.list-header-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: center;
 }
 
-.variant-modal-wrap .list-title {
+.list-title {
   font-weight: 700;
   font-size: 15px;
   color: #141414;
 }
 
-.variant-modal-wrap .list-meta {
+.list-meta {
   margin-top: 4px;
   font-size: 12px;
   color: #8c8c8c;
 }
 
-.variant-modal-wrap .quick-filter-box {
+.quick-filter-box {
   margin-bottom: 12px;
   padding: 12px;
   border-radius: 12px;
@@ -1067,7 +1091,7 @@ const saveAllVariants = async () => {
   border: 1px solid #eef2f7;
 }
 
-.variant-modal-wrap .quick-filter-actions {
+.quick-filter-actions {
   margin-top: 10px;
   display: flex;
   gap: 8px;
@@ -1075,31 +1099,29 @@ const saveAllVariants = async () => {
   justify-content: space-between;
 }
 
-/* ĐÃ SỬA: Đổi max-height tĩnh thành flex để thu gọn vừa màn hình */
-.variant-modal-wrap .quick-table-wrap {
-  flex: 1;
+.quick-table-wrap {
+  max-height: 600px;
   overflow: auto;
   border: 1px solid #f0f0f0;
   border-radius: 12px;
-  min-height: 300px;
 }
 
-.variant-modal-wrap .quick-variant-table {
+.quick-variant-table {
   width: 100%;
   border-collapse: collapse;
   min-width: 960px;
   background: #fff;
 }
 
-.variant-modal-wrap .quick-variant-table th,
-.variant-modal-wrap .quick-variant-table td {
+.quick-variant-table th,
+.quick-variant-table td {
   border-bottom: 1px solid #f3f4f6;
   padding: 10px;
   text-align: left;
   vertical-align: middle;
 }
 
-.variant-modal-wrap .quick-variant-table thead th {
+.quick-variant-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -1109,19 +1131,19 @@ const saveAllVariants = async () => {
   font-weight: 700;
 }
 
-.variant-modal-wrap .quick-variant-table tbody tr:hover {
+.quick-variant-table tbody tr:hover {
   background: #f9fcff;
 }
 
-.variant-modal-wrap .quick-variant-table tbody tr.active {
+.quick-variant-table tbody tr.active {
   background: #edf6ff;
 }
 
-.variant-modal-wrap .quick-variant-table tbody tr.duplicate {
+.quick-variant-table tbody tr.duplicate {
   background: #fff2f0;
 }
 
-.variant-modal-wrap .table-thumb {
+.table-thumb {
   width: 48px;
   height: 48px;
   object-fit: cover;
@@ -1130,12 +1152,12 @@ const saveAllVariants = async () => {
   background: #fafafa;
 }
 
-.variant-modal-wrap .sticky-detail {
+.sticky-detail {
   position: sticky;
   top: 12px;
 }
 
-.variant-modal-wrap .selected-image-preview {
+.selected-image-preview {
   display: flex;
   gap: 16px;
   margin-bottom: 18px;
@@ -1145,7 +1167,7 @@ const saveAllVariants = async () => {
   border: 1px solid #edf2f7;
 }
 
-.variant-modal-wrap .selected-main-image {
+.selected-main-image {
   width: 96px;
   height: 96px;
   object-fit: cover;
@@ -1154,41 +1176,41 @@ const saveAllVariants = async () => {
   background: #fff;
 }
 
-.variant-modal-wrap .selected-image-info {
+.selected-image-info {
   flex: 1;
   min-width: 0;
 }
 
-.variant-modal-wrap .selected-image-label {
+.selected-image-label {
   font-size: 13px;
   font-weight: 700;
   color: #141414;
   margin-bottom: 6px;
 }
 
-.variant-modal-wrap .selected-image-path {
+.selected-image-path {
   font-size: 12px;
   color: #8c8c8c;
   word-break: break-all;
 }
 
-.variant-modal-wrap .gallery-block {
+.gallery-block {
   margin-top: 10px;
 }
 
-.variant-modal-wrap .gallery-title {
+.gallery-title {
   font-weight: 600;
   margin-bottom: 10px;
   color: #262626;
 }
 
-.variant-modal-wrap .gallery-grid {
+.gallery-grid {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.variant-modal-wrap .gallery-item-wrapper {
+.gallery-item-wrapper {
   position: relative;
   width: 72px;
   height: 72px;
@@ -1200,23 +1222,23 @@ const saveAllVariants = async () => {
   background: #fff;
 }
 
-.variant-modal-wrap .gallery-item-wrapper:hover {
+.gallery-item-wrapper:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
 }
 
-.variant-modal-wrap .gallery-item-wrapper.active {
+.gallery-item-wrapper.active {
   border-color: #1677ff;
   box-shadow: 0 0 0 3px rgba(22, 119, 255, 0.12);
 }
 
-.variant-modal-wrap .gallery-img {
+.gallery-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.variant-modal-wrap .check-overlay {
+.check-overlay {
   position: absolute;
   inset: 0;
   background: rgba(22, 119, 255, 0.24);
@@ -1226,9 +1248,8 @@ const saveAllVariants = async () => {
   font-size: 18px;
 }
 
-/* ĐÃ SỬA CHỐT HẠ BỆNH KHUYẾT: Bỏ min-height 620px, cho flex: 1 kéo dài chạm đáy */
-.variant-modal-wrap .no-selection {
-  flex: 1; 
+.no-selection {
+  min-height: 620px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1237,43 +1258,47 @@ const saveAllVariants = async () => {
   border-radius: 18px;
 }
 
-.variant-modal-wrap .empty-big-icon {
+.empty-big-icon {
   font-size: 54px;
   color: #d9d9d9;
   margin-bottom: 14px;
 }
 
-.variant-modal-wrap .empty-title {
+.empty-title {
   font-size: 18px;
   font-weight: 700;
   color: #595959;
   margin-bottom: 6px;
 }
 
-.variant-modal-wrap .empty-desc {
+.empty-desc {
   font-size: 13px;
   color: #8c8c8c;
 }
 
-.variant-modal-wrap .w-full {
+.w-full {
   width: 100%;
 }
 
-.variant-modal-wrap .mt-3 {
+.mt-3 {
   margin-top: 16px;
 }
 
-.variant-modal-wrap .text-center {
+.text-center {
   text-align: center;
 }
 
 @media (max-width: 1400px) {
-  .variant-modal-wrap .variant-modal-layout {
+  .variant-modal-layout {
     grid-template-columns: 1fr;
   }
 
-  .variant-modal-wrap .sticky-detail {
+  .sticky-detail {
     position: static;
+  }
+
+  .no-selection {
+    min-height: 280px;
   }
 }
 </style>

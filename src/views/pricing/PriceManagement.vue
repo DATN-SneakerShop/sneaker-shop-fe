@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { message, Modal } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import {
   getPriceBoard,
   getPriceHistory,
@@ -82,7 +83,7 @@ const addPrice = async () => {
     await openHistory(selectedProduct.value)
     await loadProducts()
   } catch (e) {
-    const errorMsg = e.response?.data || 'Thêm giá thất bại'
+    const errorMsg = getErrorMessage(e, 'Thêm giá thất bại')
     message.error(errorMsg)
   } finally {
     loading.value = false
@@ -103,7 +104,7 @@ const removePrice = (record) => {
         await loadProducts()
 
       } catch (e) {
-        const errorMsg = e.response?.data || 'Không thể xóa'
+        const errorMsg = getErrorMessage(e, 'Không thể xóa')
         message.error(errorMsg)
       }
     }

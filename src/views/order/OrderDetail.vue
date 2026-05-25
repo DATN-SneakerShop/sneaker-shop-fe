@@ -133,7 +133,7 @@
                     </a-tag>
                   </a-descriptions-item>
 
-                  <a-descriptions-item label="Trạng thái trả hàng">
+                  <a-descriptions-item label="Trạng thái trả hàng (luồng cũ)">
                     <a-tag
                       v-if="detail?.returnStatus && detail.returnStatus !== 'NONE'"
                       color="volcano"
@@ -274,10 +274,11 @@
                       <div class="product-cell">
                         <div class="img-wrap">
                           <img
-                            v-if="record.imageUrlSnapshot"
-                            :src="record.imageUrlSnapshot"
+                            v-if="getOrderItemImage(record)"
+                            :src="getOrderItemImage(record)"
                             class="product-thumb"
                             alt=""
+                            @error="handleOrderItemImageError"
                           />
                           <div v-else class="img-placeholder"><ShoppingOutlined /></div>
                         </div>
@@ -396,53 +397,48 @@
                 </a-form>
               </a-card>
 
-              <a-card class="pro-card bg-highlight" :bordered="false">
+              <a-card v-if="hasBusinessActions" class="pro-card bg-highlight" :bordered="false">
                 <template #title>
                   <div class="card-title"><ControlOutlined /> Điều khiển nghiệp vụ</div>
                 </template>
 
                 <a-space direction="vertical" style="width: 100%" size="middle">
-                  <a-button
-                    block
-                    type="default"
-                    class="action-btn"
-                    @click="openOrderStatusModal"
-                    :disabled="!canUpdateOrderStatus"
-                  >
-                    Cập nhật trạng thái đơn
-                  </a-button>
+
+
+
+
 
                   <a-button
+                    v-if="canShowPaymentFix"
                     block
                     type="default"
                     class="action-btn"
                     @click="openPaymentModal"
-                    :disabled="!canUpdatePayment"
                   >
-                    Cập nhật thanh toán
+                    Xử lý lỗi thanh toán chuyển khoản
                   </a-button>
 
                   <a-button
-                    v-if="detail?.channel === 'ONLINE'"
+                    v-if="canShowShippingUpdate"
                     block
                     type="default"
                     class="action-btn"
                     @click="openShippingModal"
-                    :disabled="!canUpdateShipping"
                   >
-                    Cập nhật vận chuyển
+                    Cập nhật mã vận đơn / thông tin giao hàng
                   </a-button>
 
                   <a-button
+                    v-if="canShowReturn"
                     block
                     type="default"
                     danger
                     class="action-btn"
                     @click="openReturnModal"
-                    :disabled="!canOpenReturn"
                   >
-                    Xử lý hoàn / trả
+                    Tạo đơn hoàn trả
                   </a-button>
+
                 </a-space>
               </a-card>
 
@@ -781,7 +777,7 @@
           <a-form-item label="Trạng thái thanh toán">
             <a-select v-model:value="paymentModal.paymentStatus" size="large">
               <a-select-option
-                v-for="value in paymentStatusOptions"
+                v-for="value in paymentFixStatusOptions"
                 :key="value"
                 :value="value"
               >
@@ -869,9 +865,9 @@
 
       <a-modal
         v-model:open="returnModal.open"
-        title="Xử lý hoàn / trả hàng cơ bản"
+        title="Tạo đơn hoàn trả"
         width="960px"
-        ok-text="Lưu thông tin"
+        ok-text="Tạo yêu cầu"
         cancel-text="Đóng"
         :confirmLoading="returnModal.loading"
         centered
@@ -880,24 +876,18 @@
         <div class="mt-4">
           <a-row :gutter="24">
             <a-col :span="8">
+              <a-alert
+                type="info"
+                show-icon
+                message="Trang chi tiết đơn hàng chỉ tạo đơn hoàn trả. Các bước nhận hàng, duyệt hàng hoàn, hoàn tiền và hoàn tất sẽ xử lý tại trang Quản lý đơn hoàn trả."
+                class="mb-3"
+              />
               <a-form layout="vertical">
-                <a-form-item label="Trạng thái trả hàng">
-                  <a-select v-model:value="returnModal.returnStatus" size="large">
-                    <a-select-option
-                      v-for="value in returnStatusOptions"
-                      :key="value"
-                      :value="value"
-                    >
-                      {{ returnStatusText(value) }}
-                    </a-select-option>
-                  </a-select>
-                </a-form-item>
-
-                <a-form-item label="Ghi chú tổng quan">
+                <a-form-item label="Lý do / ghi chú hoàn trả">
                   <a-textarea
                     v-model:value="returnModal.returnNote"
-                    :rows="4"
-                    placeholder="Nhập ghi chú chung..."
+                    :rows="6"
+                    placeholder="Nhập lý do khách yêu cầu hoàn trả..."
                   />
                 </a-form-item>
               </a-form>
@@ -938,6 +928,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { message, Modal, Badge } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import dayjs from 'dayjs'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -956,13 +947,15 @@ import {
 } from '@ant-design/icons-vue'
 
 import {
-  applyAdminOrderReturn,
   cancelAdminOrder,
   getAdminOrderCounterPaymentQr,
   getAdminOrderDetail,
+  markAdminOrderPaid,
+  markAdminOrderDeliveryFailed,
   updateAdminOrderMeta,
   updateAdminOrderStatus,
 } from '@/api/admin-order.api'
+import { createAdminReturnRequest } from '@/api/return-refund.api'
 
 const router = useRouter()
 const route = useRoute()
@@ -972,8 +965,8 @@ const loading = ref(false)
 const detail = ref(null)
 
 const paymentStatusOptions = ['UNPAID', 'PENDING', 'PARTIALLY_PAID', 'PAID', 'FAILED', 'PARTIALLY_REFUNDED', 'REFUNDED']
+const paymentFixStatusOptions = ['FAILED', 'PAID']
 const shippingStatusOptions = ['PENDING', 'READY_TO_SHIP', 'SHIPPED', 'DELIVERED', 'DELIVERY_FAILED', 'RETURNED_TO_SENDER']
-const returnStatusOptions = ['NONE', 'PARTIALLY_RETURNED', 'COMPLETED', 'RETURNED']
 
 const paymentModal = reactive({
   open: false,
@@ -1005,7 +998,6 @@ const cancelModal = reactive({
 const returnModal = reactive({
   open: false,
   loading: false,
-  returnStatus: 'PARTIALLY_RETURNED',
   returnNote: '',
   items: [],
 })
@@ -1046,11 +1038,50 @@ const returnColumns = [
   { title: 'Ghi chú', key: 'returnNote' },
 ]
 
+const FILE_BASE_URL = 'http://localhost:8080'
+const DEFAULT_PRODUCT_IMAGE = 'https://via.placeholder.com/80x80?text=No+Image'
+
+function normalizeOrderImageUrl(path) {
+  if (!path) return ''
+
+  const value = String(path).trim()
+  if (!value) return ''
+
+  if (
+    value.startsWith('http://') ||
+    value.startsWith('https://') ||
+    value.startsWith('data:')
+  ) {
+    return value
+  }
+
+  return `${FILE_BASE_URL}${value.startsWith('/') ? '' : '/'}${value}`
+}
+
+function getOrderItemImage(record) {
+  return normalizeOrderImageUrl(
+    record?.imageUrlSnapshot ||
+    record?.imageUrl ||
+    record?.variantImageUrl ||
+    record?.productThumbnail
+  )
+}
+
+function handleOrderItemImageError(e) {
+  e.target.src = DEFAULT_PRODUCT_IMAGE
+}
+
 const isBankTransfer = computed(() => detail.value?.paymentMethod === 'BANK_TRANSFER')
 const isOfflineOrder = computed(() => detail.value?.channel === 'OFFLINE')
 const isOnlineOrder = computed(() => detail.value?.channel === 'ONLINE')
+const isOfflineCashWaitingPayment = computed(() =>
+  detail.value?.channel === 'OFFLINE'
+  && detail.value?.paymentMethod === 'CASH'
+  && detail.value?.paymentStatus === 'UNPAID'
+  && detail.value?.orderStatus === 'NEW'
+)
 
-const FINAL_ORDER_STATUSES = ['COMPLETED', 'CANCELLED']
+const FINAL_ORDER_STATUSES = ['COMPLETED', 'PARTIALLY_RETURNED', 'RETURNED', 'CANCELLED']
 
 const normalizeCurrentOrderStatus = computed(() => {
   if (isOfflineOrder.value && detail.value?.paymentStatus === 'PAID') {
@@ -1063,13 +1094,27 @@ const isCompletedOrder = computed(() =>
   normalizeCurrentOrderStatus.value === 'COMPLETED'
 )
 
-const canUpdatePayment = computed(() =>
-  !!detail.value && !isCompletedOrder.value
+const isFinalOrder = computed(() => FINAL_ORDER_STATUSES.includes(normalizeCurrentOrderStatus.value))
+
+const canShowPaymentFix = computed(() =>
+  !!detail.value
+  && isOnlineOrder.value
+  && detail.value?.paymentMethod === 'BANK_TRANSFER'
+  && detail.value?.paymentStatus === 'FAILED'
+  && !['COMPLETED', 'CANCELLED', 'PARTIALLY_RETURNED', 'RETURNED'].includes(normalizeCurrentOrderStatus.value)
 )
 
-const canUpdateShipping = computed(() =>
-  !!detail.value && isOnlineOrder.value && !isCompletedOrder.value
+const canUpdatePayment = computed(() => canShowPaymentFix.value)
+
+const canShowShippingUpdate = computed(() =>
+  !!detail.value
+  && isOnlineOrder.value
+  && !isFinalOrder.value
+  && ['PROCESSING', 'SHIPPING'].includes(normalizeCurrentOrderStatus.value)
+  && ['READY_TO_SHIP', 'SHIPPED'].includes(detail.value?.shippingStatus)
 )
+
+const canUpdateShipping = computed(() => canShowShippingUpdate.value)
 
 const isPaymentCompletedForBankTransfer = computed(() => {
   if (!isBankTransfer.value) return true
@@ -1185,8 +1230,30 @@ const canCompleteOrder = computed(() =>
   && detail.value?.shippingStatus === 'DELIVERED'
 )
 
-const canOpenReturn = computed(() =>
-  ['SHIPPING', 'COMPLETED'].includes(normalizeCurrentOrderStatus.value)
+const canShowReturn = computed(() => {
+  if (normalizeCurrentOrderStatus.value !== 'COMPLETED') return false
+  const doneAt = detail.value?.completedAt || detail.value?.deliveredAt
+  if (!doneAt) return false
+  return dayjs(doneAt).add(7, 'day').isAfter(dayjs())
+})
+
+const canOpenReturn = computed(() => canShowReturn.value)
+
+const canShowConfirmProcessing = computed(() => canConfirmOnlineOrder.value)
+const canShowReadyToShip = computed(() => canMarkReadyToShip.value)
+const canShowHandOverShipping = computed(() => canMarkShipped.value)
+const canShowDeliverySuccess = computed(() => canMarkDelivered.value)
+const canShowDeliveryFailed = computed(() =>
+  !!detail.value
+  && isOnlineOrder.value
+  && normalizeCurrentOrderStatus.value === 'SHIPPING'
+  && detail.value?.shippingStatus === 'SHIPPED'
+)
+
+const hasBusinessActions = computed(() =>
+  canShowPaymentFix.value
+  || canShowShippingUpdate.value
+  || canShowReturn.value
 )
 
 const pickNumber = (...values) => {
@@ -1283,6 +1350,16 @@ const paymentHistoryEvents = computed(() => normalizeTransferEvents())
 const suggestionTitle = computed(() => {
   if (!detail.value) return ''
 
+  if (normalizeCurrentOrderStatus.value === 'CANCELLED' && detail.value?.shippingStatus === 'DELIVERY_FAILED') {
+    return 'Đơn giao hàng không thành công và đã được hủy. Kiểm tra tồn kho và thanh toán nếu cần.'
+  }
+  if (normalizeCurrentOrderStatus.value === 'CANCELLED') {
+    return 'Đơn hàng đã hủy. Không còn thao tác xử lý đơn.'
+  }
+  if (normalizeCurrentOrderStatus.value === 'COMPLETED') {
+    return 'Đơn hàng đã hoàn thành. Có thể xử lý hoàn trả nếu khách yêu cầu.'
+  }
+
   if (isOnlineOrder.value) {
     if (normalizeCurrentOrderStatus.value === 'NEW') return 'Đơn online mới tạo'
     if (normalizeCurrentOrderStatus.value === 'PROCESSING') return 'Đơn đang chuẩn bị hàng'
@@ -1300,6 +1377,16 @@ const suggestionTitle = computed(() => {
 
 const suggestionDescription = computed(() => {
   if (!detail.value) return ''
+
+  if (normalizeCurrentOrderStatus.value === 'CANCELLED' && detail.value?.shippingStatus === 'DELIVERY_FAILED') {
+    return 'Đơn giao hàng không thành công và đã được hủy. Kiểm tra tồn kho và thanh toán nếu cần.'
+  }
+  if (normalizeCurrentOrderStatus.value === 'CANCELLED') {
+    return 'Đơn hàng đã hủy. Không còn thao tác xử lý đơn.'
+  }
+  if (normalizeCurrentOrderStatus.value === 'COMPLETED') {
+    return 'Đơn hàng đã hoàn thành. Có thể xử lý hoàn trả nếu khách yêu cầu.'
+  }
 
   if (isOnlineOrder.value) {
     if (normalizeCurrentOrderStatus.value === 'NEW') {
@@ -1320,7 +1407,7 @@ const suggestionDescription = computed(() => {
       if (detail.value?.shippingStatus === 'DELIVERED') {
         return 'Đơn đã giao thành công, bạn có thể khép lại chu trình bằng nút Hoàn thành đơn.'
       }
-      return 'Theo dõi vận đơn. Khi có xác nhận giao thành công, bấm Giao thành công.'
+      return 'Theo dõi vận đơn. Khi có xác nhận giao thành công, bấm Giao thành công. Nếu giao thất bại, bấm Giao hàng không thành công.'
     }
   }
 
@@ -1407,6 +1494,12 @@ const smartSuggestionActions = computed(() => {
           type: 'primary',
           handler: () => quickSetShippingStatus('DELIVERED'),
         })
+        actions.push({
+          key: 'delivery-failed',
+          label: 'Giao hàng không thành công',
+          danger: true,
+          handler: markDeliveryFailedAction,
+        })
       }
     }
   }
@@ -1474,7 +1567,7 @@ const reloadCounterQr = async () => {
     const response = await getAdminOrderCounterPaymentQr(orderId)
     mapCounterQrResponse(response.data || {})
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không tạo được QR thanh toán')
+    message.error(getErrorMessage(error, 'Không tạo được QR thanh toán'))
   } finally {
     counterQrModal.loading = false
   }
@@ -1499,7 +1592,7 @@ const refreshQrPaymentStatus = async () => {
       message.info('Chưa ghi nhận callback thanh toán mới')
     }
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không kiểm tra được trạng thái thanh toán')
+    message.error(getErrorMessage(error, 'Không kiểm tra được trạng thái thanh toán'))
   } finally {
     counterQrModal.checking = false
   }
@@ -1560,12 +1653,11 @@ const submitQuickShipForm = async () => {
     if (shippingMetaUpdated) {
       closeQuickShipForm()
       return message.warning(
-        err?.response?.data?.message ||
-        'Đã lưu thông tin vận chuyển, nhưng chưa cập nhật được trạng thái đơn sang Đang giao hàng'
+        getErrorMessage(err, 'Đã lưu thông tin vận chuyển, nhưng chưa cập nhật được trạng thái đơn sang Đang giao hàng')
       )
     }
 
-    message.error(err?.response?.data?.message || 'Không cập nhật được trạng thái giao hàng')
+    message.error(getErrorMessage(err, 'Không cập nhật được trạng thái giao hàng'))
   } finally {
     quickShipForm.loading = false
   }
@@ -1577,7 +1669,7 @@ const fetchDetail = async () => {
     const response = await getAdminOrderDetail(orderId)
     detail.value = response.data
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không tải được chi tiết đơn hàng')
+    message.error(getErrorMessage(error, 'Không tải được chi tiết đơn hàng'))
   } finally {
     loading.value = false
   }
@@ -1595,7 +1687,7 @@ const openOrderStatusModal = () => {
 
 const openPaymentModal = () => {
   if (!canUpdatePayment.value) {
-    return message.warning('Đơn đã hoàn thành nên không thể cập nhật trạng thái thanh toán')
+    return message.warning('Chỉ đơn online thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
   }
 
   paymentModal.open = true
@@ -1605,7 +1697,7 @@ const openPaymentModal = () => {
 
 const openShippingModal = () => {
   if (!canUpdateShipping.value) {
-    return message.warning('Đơn đã hoàn thành nên không thể cập nhật trạng thái vận chuyển')
+    return message.warning('Đơn hàng đã hoàn thành hoặc đã hủy, không thể cập nhật vận chuyển.')
   }
 
   shippingModal.open = true
@@ -1623,9 +1715,39 @@ const displayValidName = (val) => {
   return String(val).trim()
 }
 
+const markDeliveryFailedAction = () => {
+  if (!canShowDeliveryFailed.value) {
+    return message.warning('Không thể cập nhật giao hàng không thành công cho đơn ở trạng thái hiện tại.')
+  }
+
+  const reason = window.prompt('Nhập lý do giao hàng không thành công:', detail.value?.deliveryFailReason || 'Khách không nhận hàng')
+  if (reason === null) return
+  const trimmed = String(reason || '').trim()
+  if (!trimmed) {
+    return message.warning('Vui lòng nhập lý do giao hàng không thành công')
+  }
+
+  Modal.confirm({
+    title: 'Xác nhận giao hàng không thành công',
+    content: 'Đơn sẽ được hủy và hoàn/release tồn kho. Tiếp tục?',
+    okText: 'Xác nhận',
+    cancelText: 'Hủy',
+    okButtonProps: { danger: true },
+    async onOk() {
+      try {
+        await markAdminOrderDeliveryFailed(orderId, { reason: trimmed })
+        message.success('Đã cập nhật đơn hàng giao không thành công và hủy đơn.')
+        await fetchDetail()
+      } catch (err) {
+        message.error(getErrorMessage(err, 'Không thể cập nhật giao hàng không thành công cho đơn ở trạng thái hiện tại.'))
+      }
+    },
+  })
+}
+
 const quickSetShippingStatus = (status) => {
   if (isCompletedOrder.value) {
-    return message.warning('Đơn đã hoàn thành nên không thể cập nhật trạng thái vận chuyển')
+    return message.warning('Đơn hàng đã hoàn thành hoặc đã hủy, không thể cập nhật vận chuyển.')
   }
 
   Modal.confirm({
@@ -1639,7 +1761,7 @@ const quickSetShippingStatus = (status) => {
         message.success('Đã cập nhật trạng thái vận chuyển thành công')
         await fetchDetail()
       } catch (err) {
-        message.error(err?.response?.data?.message || 'Lỗi cập nhật trạng thái vận chuyển')
+        message.error(getErrorMessage(err, 'Lỗi cập nhật trạng thái vận chuyển'))
       }
     },
   })
@@ -1651,7 +1773,7 @@ const quickShipOrder = () => {
 
 const quickSetPaymentStatus = (status) => {
   if (isCompletedOrder.value) {
-    return message.warning('Đơn đã hoàn thành nên không thể cập nhật trạng thái thanh toán')
+    return message.warning('Chỉ đơn online thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
   }
 
   Modal.confirm({
@@ -1661,17 +1783,21 @@ const quickSetPaymentStatus = (status) => {
     cancelText: 'Hủy',
     async onOk() {
       try {
-        const payload = { paymentStatus: status }
+        if (isOfflineCashWaitingPayment.value && status === 'PAID') {
+          await markAdminOrderPaid(orderId)
+        } else {
+          const payload = { paymentStatus: status }
 
-        if (isOfflineOrder.value && status === 'PAID') {
-          payload.orderStatus = 'COMPLETED'
+          if (isOfflineOrder.value && status === 'PAID') {
+            payload.orderStatus = 'COMPLETED'
+          }
+
+          await updateAdminOrderMeta(orderId, payload)
         }
-
-        await updateAdminOrderMeta(orderId, payload)
         message.success('Đã cập nhật trạng thái thanh toán')
         await fetchDetail()
       } catch (err) {
-        message.error(err?.response?.data?.message || 'Lỗi cập nhật trạng thái thanh toán')
+        message.error(getErrorMessage(err, 'Lỗi cập nhật trạng thái thanh toán'))
       }
     },
   })
@@ -1727,32 +1853,31 @@ const submitOrderStatusModal = async () => {
     orderStatusModal.open = false
     await fetchDetail()
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không cập nhật được trạng thái đơn hàng')
+    message.error(getErrorMessage(error, 'Không cập nhật được trạng thái đơn hàng'))
   } finally {
     orderStatusModal.loading = false
   }
 }
 
 const submitPaymentModal = async () => {
-  if (isCompletedOrder.value) {
+  if (!canUpdatePayment.value) {
     paymentModal.open = false
-    return message.warning('Đơn đã hoàn thành nên không thể cập nhật trạng thái thanh toán')
+    return message.warning('Chỉ đơn online thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
+  }
+  if (!paymentFixStatusOptions.includes(paymentModal.paymentStatus)) {
+    return message.warning('Chỉ được giữ trạng thái lỗi hoặc xác nhận đã thanh toán đủ.')
   }
 
   paymentModal.loading = true
   try {
     const payload = { paymentStatus: paymentModal.paymentStatus }
 
-    if (isOfflineOrder.value && paymentModal.paymentStatus === 'PAID') {
-      payload.orderStatus = 'COMPLETED'
-    }
-
     await updateAdminOrderMeta(orderId, payload)
     message.success('Đã cập nhật trạng thái thanh toán')
     paymentModal.open = false
     await fetchDetail()
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Lỗi cập nhật trạng thái thanh toán')
+    message.error(getErrorMessage(error, 'Lỗi cập nhật trạng thái thanh toán'))
   } finally {
     paymentModal.loading = false
   }
@@ -1761,7 +1886,7 @@ const submitPaymentModal = async () => {
 const submitShippingModal = async () => {
   if (isCompletedOrder.value) {
     shippingModal.open = false
-    return message.warning('Đơn đã hoàn thành nên không thể cập nhật trạng thái vận chuyển')
+    return message.warning('Đơn hàng đã hoàn thành hoặc đã hủy, không thể cập nhật vận chuyển.')
   }
 
   shippingModal.loading = true
@@ -1776,7 +1901,7 @@ const submitShippingModal = async () => {
     message.success('Đã cập nhật thông tin vận chuyển')
     await fetchDetail()
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không cập nhật được vận chuyển')
+    message.error(getErrorMessage(error, 'Không cập nhật được vận chuyển'))
   } finally {
     shippingModal.loading = false
   }
@@ -1806,7 +1931,7 @@ const updateOrderStatusAction = (status) => {
         message.success('Đã cập nhật trạng thái đơn')
         await fetchDetail()
       } catch (error) {
-        message.error(error?.response?.data?.message || 'Không cập nhật được trạng thái đơn')
+        message.error(getErrorMessage(error, 'Không cập nhật được trạng thái đơn'))
       }
     },
   })
@@ -1834,7 +1959,7 @@ const submitCancelModal = async () => {
     message.success('Đã hủy đơn hàng')
     await fetchDetail()
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không hủy được đơn hàng')
+    message.error(getErrorMessage(error, 'Không hủy được đơn hàng'))
   } finally {
     cancelModal.loading = false
   }
@@ -1843,34 +1968,45 @@ const submitCancelModal = async () => {
 const openReturnModal = () => {
   returnModal.open = true
   returnModal.loading = false
-  returnModal.returnStatus = detail.value?.returnStatus || 'PARTIALLY_RETURNED'
   returnModal.returnNote = detail.value?.returnNote || ''
   returnModal.items = (detail.value?.items || []).map((item) => ({
     orderItemId: item.id,
     productNameSnapshot: item.productNameSnapshot,
-    max: item.quantity,
-    returnedQuantity: item.returnedQuantity || 0,
+    max: Math.max(0, Number(item.quantity || 0) - Number(item.returnedQuantity || 0)),
+    returnedQuantity: 0,
     returnNote: item.returnNote || '',
   }))
 }
 
 const submitReturnModal = async () => {
+  const items = returnModal.items
+    .filter((item) => Number(item.returnedQuantity || 0) > 0)
+    .map((item) => ({
+      orderItemId: item.orderItemId,
+      quantity: Number(item.returnedQuantity || 0),
+      note: item.returnNote,
+    }))
+
+  if (items.length === 0) {
+    message.warning('Vui lòng nhập số lượng sản phẩm cần trả.')
+    return
+  }
+
   returnModal.loading = true
   try {
-    await applyAdminOrderReturn(orderId, {
-      returnStatus: returnModal.returnStatus,
-      returnNote: returnModal.returnNote,
-      items: returnModal.items.map((item) => ({
-        orderItemId: item.orderItemId,
-        returnedQuantity: Number(item.returnedQuantity || 0),
-        returnNote: item.returnNote,
-      })),
+    const response = await createAdminReturnRequest({
+      orderId,
+      reason: returnModal.returnNote,
+      adminNote: returnModal.returnNote,
+      items,
     })
     returnModal.open = false
-    message.success('Đã cập nhật hoàn / trả')
+    message.success('Đã tạo đơn hoàn trả. Chuyển sang trang xử lý đơn hoàn trả.')
     await fetchDetail()
+    const returnId = response?.data?.id
+    if (returnId) router.push(`/orders/returns/${returnId}`)
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không xử lý được hoàn / trả')
+    message.error(getErrorMessage(error, 'Không tạo được yêu cầu trả hàng hoàn tiền'))
   } finally {
     returnModal.loading = false
   }
@@ -1900,6 +2036,8 @@ const orderStatusText = (value) => {
       : 'Đã xác nhận',
     SHIPPING: 'Đang giao hàng',
     COMPLETED: 'Hoàn thành',
+    PARTIALLY_RETURNED: 'Đã trả một phần',
+    RETURNED: 'Đã trả toàn bộ',
     CANCELLED: 'Đã hủy',
   }[value] || value || '-')
 }

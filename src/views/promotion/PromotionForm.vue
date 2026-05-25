@@ -173,7 +173,7 @@
 
       <div class="form-footer">
         <a-button size="large" @click="router.back()">Hủy bỏ</a-button>
-        <a-button size="large" type="primary" class="btn-submit" @click="submit">
+        <a-button size="large" type="primary" class="btn-submit" :loading="submitting" :disabled="submitting" @click="submit">
           <i class="fas fa-save" style="margin-right: 8px;"></i> {{ isEdit ? 'Lưu cập nhật' : 'Tạo đợt giảm giá' }}
         </a-button>
       </div>
@@ -186,6 +186,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import dayjs from 'dayjs'
 import { getPromotionProducts, getVariantsByProduct } from '@/api/product.api'
 import { createPromotion, updatePromotion, getPromotionDetail } from '@/api/promotion'
@@ -222,6 +223,7 @@ const expandedRows = ref([])
 const selectedVariants = ref([])
 const variantDiscounts = ref({})
 const nameError = ref('')
+const submitting = ref(false)
 
 const IMAGE_BASE_URL = "http://localhost:8080/"
 const getImageUrl = (path) => {
@@ -359,6 +361,7 @@ const formatPrice = price =>
 const disabledDate = current => current && current < dayjs().startOf('day')
 
 const submit = async () => {
+  if (submitting.value) return
   if (!form.name || !dateRange.value.length) return message.error('Vui lòng điền tên và thời gian áp dụng!')
   if (!selectedVariants.value.length) return message.error('Phải chọn ít nhất 1 biến thể để giảm giá!')
 
@@ -382,12 +385,15 @@ const submit = async () => {
     }))
   }
 
+  submitting.value = true
   try {
     isEdit ? await updatePromotion(promotionId, payload) : await createPromotion(payload)
     message.success(isEdit ? 'Cập nhật thành công!' : 'Tạo khuyến mãi thành công!')
     router.push('/promotions')
-  } catch {
-    message.error('Có lỗi xảy ra khi lưu. Vui lòng thử lại.')
+  } catch (err) {
+    message.error(getErrorMessage(err, 'Có lỗi xảy ra khi lưu. Vui lòng thử lại.'))
+  } finally {
+    submitting.value = false
   }
 }
 </script>

@@ -163,6 +163,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import {
   clearCart,
   getCurrentCart,
@@ -244,7 +245,7 @@ async function loadCart() {
     const res = await getCurrentCart()
     applyCartData(res.data || {})
   } catch (e) {
-    error.value = e.response?.data || 'Không tải được giỏ hàng'
+    error.value = getErrorMessage(e, 'Không tải được giỏ hàng')
   } finally {
     loading.value = false
   }
@@ -281,7 +282,7 @@ async function updateQuantity(item, quantity) {
     const res = await updateCartItemQuantity(item.itemId, quantity)
     applyCartData(res.data || {})
   } catch (e) {
-    message.error(e.response?.data || 'Cập nhật số lượng thất bại')
+    message.error(getErrorMessage(e, 'Cập nhật số lượng thất bại'))
   } finally {
     pendingItemId.value = null
   }
@@ -293,7 +294,7 @@ async function toggleSelection(item, event) {
     const res = await updateCartItemSelection(item.itemId, event.target.checked)
     applyCartData(res.data || {})
   } catch (e) {
-    message.error(e.response?.data || 'Cập nhật lựa chọn thất bại')
+    message.error(getErrorMessage(e, 'Cập nhật lựa chọn thất bại'))
   } finally {
     pendingItemId.value = null
   }
@@ -306,7 +307,7 @@ async function handleRemoveItem(item) {
     applyCartData(res.data || {})
     message.success('Đã xóa sản phẩm khỏi giỏ hàng')
   } catch (e) {
-    message.error(e.response?.data || 'Xóa sản phẩm thất bại')
+    message.error(getErrorMessage(e, 'Xóa sản phẩm thất bại'))
   } finally {
     pendingItemId.value = null
   }
@@ -320,7 +321,7 @@ async function handleClearCart() {
     applyCartData(res.data || {})
     message.success('Đã xóa toàn bộ giỏ hàng')
   } catch (e) {
-    message.error(e.response?.data || 'Xóa giỏ hàng thất bại')
+    message.error(getErrorMessage(e, 'Xóa giỏ hàng thất bại'))
   }
 }
 

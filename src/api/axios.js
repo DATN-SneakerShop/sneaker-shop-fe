@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getErrorMessage } from '../utils/error'
 import { message, Modal } from 'ant-design-vue'
 
 import router from '../router'
@@ -48,9 +49,7 @@ api.interceptors.response.use(
       Modal.warning({
         title: 'LỖI HỆ THỐNG (500)',
         content:
-          typeof error.response?.data === 'string'
-            ? error.response.data
-            : 'Đã xảy ra lỗi nghiêm trọng trên máy chủ. Máy quét đã ghi log (Mức độ: ERROR).',
+          getErrorMessage(error, 'Đã xảy ra lỗi nghiêm trọng trên máy chủ.'),
         okText: 'Đóng',
       })
     }

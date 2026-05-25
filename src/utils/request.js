@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { getErrorMessage } from './error'
 import { message } from 'ant-design-vue'
 
 const request = axios.create({
@@ -23,7 +24,7 @@ request.interceptors.response.use(
       message.error('Bạn không có quyền thực hiện thao tác này')
     } else {
       message.error(
-        error.response?.data?.message || 'Lỗi hệ thống'
+        getErrorMessage(error, 'Lỗi hệ thống')
       )
     }
     return Promise.reject(error)

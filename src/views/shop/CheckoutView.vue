@@ -332,6 +332,16 @@
                 <strong class="text-success">- {{ formatVnd(finalSummary.voucherDiscountAmount) }}</strong>
               </div>
 
+              <div class="summary-row" v-if="finalSummary.vipDiscountAmount > 0">
+                <span>Giảm giá VIP <small v-if="finalSummary.customerRankName">({{ finalSummary.customerRankName }})</small></span>
+                <strong class="text-success">- {{ formatVnd(finalSummary.vipDiscountAmount) }}</strong>
+              </div>
+
+              <div class="summary-row" v-if="finalSummary.customerRankName && finalSummary.vipDiscountAmount <= 0">
+                <span>Cấp độ thành viên</span>
+                <strong>{{ finalSummary.customerRankName }}</strong>
+              </div>
+
               <div class="summary-row">
                 <span>Phí vận chuyển</span>
                 <strong v-if="previewLoading" style="color:#666">Đang tính...</strong>
@@ -416,6 +426,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import api from '@/api/axios'
 import { getCurrentCart } from '@/api/cart.api'
 import { previewCheckout, submitCheckout } from '@/api/checkout.api'
@@ -555,6 +566,9 @@ const finalSummary = computed(() => {
     subtotalAmount: p.subtotalAmount || 0,
     promotionDiscountAmount: p.promotionDiscountAmount || 0,
     voucherDiscountAmount: p.voucherDiscountAmount || 0,
+    vipDiscountAmount: p.vipDiscountAmount || 0,
+    customerRankName: p.customerRankName || '',
+    customerRankDiscountPercent: p.customerRankDiscountPercent || 0,
     shippingFee: shipFee,
     freeShipDiscountAmount: freeshipDiscount,
     finalAmount: finalAmt
@@ -862,7 +876,7 @@ async function loadCheckoutData() {
     await loadAvailableVouchers()
     await handlePreview()
   } catch (e) {
-    error.value = e.response?.data || 'Không tải được dữ liệu thanh toán'
+    error.value = getErrorMessage(e, 'Không tải được dữ liệu thanh toán')
   } finally {
     loading.value = false
   }
@@ -890,7 +904,7 @@ async function handlePreview() {
     const res = await previewCheckout(payload)
     preview.value = res.data || {}
   } catch (e) {
-    message.error(e.response?.data?.message || e.response?.data || 'Không thể tính toán đơn hàng')
+    message.error(getErrorMessage(e, 'Không thể tính toán đơn hàng'))
     selectedVoucherCode.value = ''
     selectedFreeShipCode.value = ''
   } finally {
@@ -978,7 +992,7 @@ async function handleSubmitCheckout() {
       },
     })
   } catch (e) {
-    message.error(e.response?.data?.message || e.response?.data || 'Đặt hàng thất bại')
+    message.error(getErrorMessage(e, 'Đặt hàng thất bại'))
   } finally {
     submitting.value = false
   }

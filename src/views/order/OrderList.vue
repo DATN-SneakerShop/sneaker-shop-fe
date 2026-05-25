@@ -95,24 +95,38 @@
     </a-card>
 
     <a-card class="list-card" :bordered="false">
+      <a-tabs v-model:activeKey="activeTab" class="order-tabs">
+        <a-tab-pane key="needs" tab="Cần xử lý" />
+        <a-tab-pane key="shipping" tab="Đang giao" />
+        <a-tab-pane key="payment" tab="Chờ thanh toán" />
+        <a-tab-pane key="completed" tab="Hoàn tất" />
+        <a-tab-pane key="cancelled" tab="Đã hủy" />
+        <a-tab-pane key="all" tab="Tất cả" />
+      </a-tabs>
       <div class="list-summary">
         <div>
           <div class="list-summary__label">Tổng đơn hiển thị</div>
-          <div class="list-summary__value">{{ rows.length }}</div>
+          <div class="list-summary__value">{{ displayRows.length }}</div>
         </div>
       </div>
 
       <a-table
         rowKey="id"
         :columns="columns"
-        :dataSource="rows"
+        :dataSource="displayRows"
         :loading="loading"
         :pagination="{ pageSize: 10, showSizeChanger: false }"
         :scroll="{ x: 1500 }"
         :locale="{ emptyText: emptyText }"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'orderCode'">
+          <template v-if="column.key === 'priority'">
+            <a-tag :color="getPriority(record).color">
+              {{ getPriority(record).label }}
+            </a-tag>
+          </template>
+
+          <template v-else-if="column.key === 'orderCode'">
             <div class="order-code-cell">
               <router-link :to="`/orders/${record.id}`" class="order-code-link">
                 {{ record.orderCode }}
@@ -192,6 +206,7 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { useRouter } from 'vue-router'
 import dayjs from 'dayjs'
 import { listAdminOrders } from '@/api/admin-order.api'
@@ -199,6 +214,7 @@ import { listAdminOrders } from '@/api/admin-order.api'
 const router = useRouter()
 const loading = ref(false)
 const rows = ref([])
+const activeTab = ref('needs')
 
 const filters = reactive({
   keyword: '',
@@ -218,6 +234,7 @@ const paymentMethodOptions = ['COD', 'CASH', 'BANK_TRANSFER', 'VNPAY', 'MOMO']
 const columns = [
   { title: 'Mã đơn', key: 'orderCode', width: 220, fixed: 'left' },
   { title: 'Ngày tạo', key: 'createdAt', dataIndex: 'createdAt', width: 170 },
+  { title: 'Ưu tiên', key: 'priority', width: 230 },
   { title: 'Khách hàng', key: 'customer', width: 230 },
   { title: 'Người nhận', key: 'receiver', width: 180 },
   { title: 'SL SP', key: 'itemCount', dataIndex: 'itemCount', width: 110, align: 'center' },
@@ -228,6 +245,47 @@ const columns = [
   { title: 'Vận chuyển', key: 'shippingStatus', dataIndex: 'shippingStatus', width: 170 },
   { title: 'Thao tác', key: 'action', width: 110, fixed: 'right' },
 ]
+
+const getPriority = (order = {}) => {
+  if (order.shippingStatus === 'DELIVERY_FAILED') return { score: 100, label: 'Giao thất bại - cần xử lý', color: 'red', level: 'danger' }
+  if (order.paymentStatus === 'PARTIALLY_PAID') return { score: 95, label: 'Thanh toán thiếu - cần đối soát', color: 'red', level: 'danger' }
+  if (order.paymentStatus === 'PAID' && order.orderStatus === 'NEW') return { score: 90, label: 'Đã thanh toán - cần xử lý', color: 'red', level: 'danger' }
+  if (order.paymentStatus === 'PAID' && order.orderStatus === 'PROCESSING') return { score: 80, label: 'Đã thanh toán - cần chuẩn bị hàng', color: 'orange', level: 'warning' }
+  if (order.paymentMethod === 'COD' && order.orderStatus === 'NEW') return { score: 70, label: 'COD mới - cần xác nhận', color: 'blue', level: 'info' }
+  if (order.shippingStatus === 'SHIPPED' || order.orderStatus === 'SHIPPING') return { score: 60, label: 'Đang giao - cần theo dõi', color: 'purple', level: 'info' }
+  if (order.paymentStatus === 'PENDING') return { score: 40, label: 'Chờ thanh toán', color: 'gold', level: 'warning' }
+  if (order.orderStatus === 'COMPLETED') return { score: 10, label: 'Đã hoàn tất', color: 'green', level: 'done' }
+  if (order.orderStatus === 'CANCELLED') return { score: 0, label: 'Đã hủy', color: 'default', level: 'muted' }
+  return { score: 50, label: 'Cần theo dõi', color: 'cyan', level: 'info' }
+}
+
+const matchesActiveTab = (order) => {
+  switch (activeTab.value) {
+    case 'needs':
+      return !['COMPLETED', 'CANCELLED'].includes(order.orderStatus)
+    case 'shipping':
+      return order.orderStatus === 'SHIPPING' || ['READY_TO_SHIP', 'SHIPPED', 'DELIVERY_FAILED'].includes(order.shippingStatus)
+    case 'payment':
+      return ['UNPAID', 'PENDING', 'PARTIALLY_PAID'].includes(order.paymentStatus) && order.orderStatus !== 'CANCELLED'
+    case 'completed':
+      return order.orderStatus === 'COMPLETED'
+    case 'cancelled':
+      return order.orderStatus === 'CANCELLED'
+    case 'all':
+    default:
+      return true
+  }
+}
+
+const displayRows = computed(() =>
+  [...rows.value]
+    .filter(matchesActiveTab)
+    .sort((a, b) => {
+      const priorityDiff = getPriority(b).score - getPriority(a).score
+      if (priorityDiff !== 0) return priorityDiff
+      return dayjs(b.createdAt).valueOf() - dayjs(a.createdAt).valueOf()
+    })
+)
 
 const emptyText = computed(() => {
   if (loading.value) return 'Đang tải đơn hàng...'
@@ -250,7 +308,7 @@ const fetchOrders = async () => {
     const response = await listAdminOrders(buildParams())
     rows.value = Array.isArray(response.data) ? response.data : []
   } catch (error) {
-    message.error(error?.response?.data?.message || 'Không tải được danh sách đơn hàng')
+    message.error(getErrorMessage(error, 'Không tải được danh sách đơn hàng'))
   } finally {
     loading.value = false
   }
@@ -354,6 +412,10 @@ onMounted(fetchOrders)
 .list-card {
   border-radius: 16px;
   margin-bottom: 16px;
+}
+
+.order-tabs {
+  margin-bottom: 12px;
 }
 
 .list-summary {

@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { PlusOutlined, EditOutlined, DeleteOutlined, TrophyOutlined } from '@ant-design/icons-vue'
 import { getCustomerRanks, createCustomerRank, updateCustomerRank, deleteCustomerRank } from '@/api/customer'
 
@@ -72,7 +73,7 @@ const handleSubmit = async () => {
     modalVisible.value = false
     fetchRanks()
   } catch (err) {
-    message.error(err.response?.data?.message || 'Có lỗi xảy ra, tên hạng có thể bị trùng!')
+    message.error(getErrorMessage(err, 'Có lỗi xảy ra, tên hạng có thể bị trùng!'))
   } finally {
     submitLoading.value = false
   }

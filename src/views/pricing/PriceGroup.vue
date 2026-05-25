@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted } from "vue"
 import { message } from "ant-design-vue"
+import { getErrorMessage } from '@/utils/error'
 import { getPriceGroupBoard, saveGroupPrice } from "@/api/prices"
 
 /* ================= STATE ================= */
@@ -156,7 +157,7 @@ const savePrice = async () => {
     await loadData();
 
   } catch (e) {
-    message.error(e.response?.data?.message || "Lỗi cập nhật giá");
+    message.error(getErrorMessage(e, "Lỗi cập nhật giá"));
   } finally {
     loading.value = false;
   }

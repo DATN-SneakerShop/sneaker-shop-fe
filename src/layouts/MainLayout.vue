@@ -98,6 +98,9 @@
           <a-menu-item key="order-create">
             <router-link to="/orders/create">Tạo đơn hàng</router-link>
           </a-menu-item>
+          <a-menu-item key="order-return-refunds">
+            <router-link to="/orders/return-refunds">Trả hàng hoàn tiền</router-link>
+          </a-menu-item>
           <a-menu-item key="order-returns">
             <router-link to="/orders/returns/report">Báo cáo hoàn trả</router-link>
           </a-menu-item>

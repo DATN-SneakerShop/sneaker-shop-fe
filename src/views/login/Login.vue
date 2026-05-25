@@ -50,6 +50,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { LockOutlined, UserOutlined } from '@ant-design/icons-vue'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { useRouter } from 'vue-router'
 
 import api from '@/api/axios'
@@ -141,7 +142,7 @@ const handleGoogleLogin = async (response) => {
     message.success(`Đăng nhập Google thành công! Chào mừng ${authStore.userName}`)
     redirectAfterLogin()
   } catch (err) {
-    message.error(err.response?.data || 'Xác thực Google thất bại!')
+    message.error(getErrorMessage(err, 'Xác thực Google thất bại!'))
   } finally {
     loading.value = false
   }
@@ -161,7 +162,7 @@ const handleLogin = async () => {
     if (failedAttempts.value >= 3) {
       message.error('Phát hiện truy cập bất thường!')
     } else {
-      message.error(err.response?.data || 'Sai tài khoản hoặc mật khẩu!')
+      message.error(getErrorMessage(err, 'Sai tài khoản hoặc mật khẩu!'))
     }
   } finally {
     loading.value = false

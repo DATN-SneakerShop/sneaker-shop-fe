@@ -95,6 +95,7 @@
 <script setup>
 import { ref, computed, onMounted, createVNode } from 'vue';
 import { message, Modal } from 'ant-design-vue';
+import { getErrorMessage } from '@/utils/error';
 import { ExclamationCircleOutlined } from '@ant-design/icons-vue';
 import api from '@/api/axios';
 import dayjs from 'dayjs';
@@ -171,7 +172,7 @@ const handleAdd = async () => {
     isAddVisible.value = false;
     fetchUsers();
   } catch (err) {
-    message.error(err.response?.data || 'Thất bại');
+    message.error(getErrorMessage(err, 'Thất bại'));
   } finally {
     loadingSubmit.value = false;
   }
@@ -198,7 +199,7 @@ const handleUpdate = async () => {
     isEditVisible.value = false;
     fetchUsers();
   } catch (err) {
-    message.error(err.response?.data || 'Thất bại');
+    message.error(getErrorMessage(err, 'Thất bại'));
   } finally {
     loadingSubmit.value = false;
   }

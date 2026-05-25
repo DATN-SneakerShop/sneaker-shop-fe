@@ -21,3 +21,10 @@ export const getCustomerRanks = () => api.get('/customer-ranks')
 export const createCustomerRank = (data) => api.post('/customer-ranks', data)
 export const updateCustomerRank = (id, data) => api.put(`/customer-ranks/${id}`, data)
 export const deleteCustomerRank = (id) => api.delete(`/customer-ranks/${id}`)
+
+// 5. THỐNG KÊ / DASHBOARD KHÁCH HÀNG
+export const getCustomerSpending = () => api.get('/khach-hang/spending')
+export const getTopSpendingCustomers = (limit = 3) => api.get('/khach-hang/top-spending', { params: { limit } })
+export const getVipCustomers = (params = {}) => api.get('/khach-hang/vip', { params })
+export const getCustomerTransactions = () => api.get('/khach-hang/history')
+export const getCustomerDashboard = () => api.get('/khach-hang/dashboard')

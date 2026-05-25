@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { getColors, saveColor, deleteColor } from '@/api/product.api'
 import { message, Modal } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { PlusOutlined, EditOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue'
 
 const list = ref([]); const loading = ref(false); const open = ref(false)
@@ -14,7 +15,7 @@ const fetch = async () => {
 const handleSave = async () => {
   if (!form.value.name) return message.warn('Vui lòng nhập tên')
   try { await saveColor(form.value); message.success('Thành công'); open.value = false; fetch() }
-  catch (e) { message.error(e.response?.data?.message || 'Lỗi lưu dữ liệu') }
+  catch (e) { message.error(getErrorMessage(e, 'Lỗi lưu dữ liệu')) }
 }
 const handleHide = (id) => {
   Modal.confirm({ title: 'Xác nhận ẩn?', onOk: async () => { await deleteColor(id); message.success('Đã ẩn'); fetch() } })

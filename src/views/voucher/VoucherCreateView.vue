@@ -200,6 +200,7 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '@/api/axios'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { useRouter } from 'vue-router'
 import { useRoute } from 'vue-router'
 import dayjs from 'dayjs'
@@ -432,7 +433,7 @@ await api.post(`/vouchers/${voucherId}/customers`, customerPayload);
     router.push('/voucher');
   } catch (err) {
     console.error(err);
-    message.error('Thao tác thất bại: ' + (err.response?.data?.message || 'Lỗi hệ thống'));
+    message.error(getErrorMessage(err, 'Thao tác thất bại. Vui lòng thử lại.'));
   }
 };
 const route = useRoute()

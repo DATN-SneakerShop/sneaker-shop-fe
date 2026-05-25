@@ -25,7 +25,8 @@
 <script setup>
 import { reactive, ref } from 'vue';
 import api from '@/api/axios';
-import { message } from 'ant-design-vue';
+import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
@@ -53,7 +54,7 @@ const handleRegister = async () => {
         message.success('Đăng ký thành công!');
         router.push('/login');
     } catch (err) {
-        message.error(err.response?.data || 'Lỗi đăng ký!');
+        message.error(getErrorMessage(err, 'Lỗi đăng ký!'));
     } finally {
         loading.value = false;
     }

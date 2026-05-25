@@ -1,84 +1,72 @@
 <script setup>
-import { ref, onMounted, computed } from "vue"
-import api from "@/api/axios"
-import { message } from "ant-design-vue"
-import { TrophyOutlined, UserOutlined, WalletOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { ref, onMounted } from 'vue'
+import { message } from 'ant-design-vue'
+import { TrophyOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons-vue'
+import { getCustomerSpending, getTopSpendingCustomers } from '@/api/customer'
+import { getErrorMessage } from '@/utils/error'
 
 const loading = ref(false)
 const customers = ref([])
 const filteredCustomers = ref([])
 const topCustomers = ref([])
 
-const searchText = ref("")
-const spendingFilter = ref("ALL")
-const sortOrder = ref("DESC")
+const searchText = ref('')
+const spendingFilter = ref('ALL')
+const sortOrder = ref('DESC')
 
-/* ================= FORMAT TIỀN TỆ ================= */
 const formatMoney = (value) => {
-  if (!value) return "0 ₫"
-  return new Intl.NumberFormat("vi-VN", {
-    style: "currency",
-    currency: "VND"
-  }).format(value)
+  const n = Number(value || 0)
+  return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n)
 }
 
-/* ================= FETCH DATA (FIX LỖI 400) ================= */
 const fetchSpendingData = async () => {
   loading.value = true
   try {
-    // 🔥 Gọi song song 2 API với try-catch riêng để thằng này lỗi không kéo thằng kia chết theo
-    const [resSpending, resTop] = await Promise.allSettled([
-      api.get("/orders/customer-spending"),
-      api.get("/orders/top-customers")
+    const [resSpending, resTop] = await Promise.all([
+      getCustomerSpending(),
+      getTopSpendingCustomers(3),
     ])
-
-    if (resSpending.status === 'fulfilled') {
-      customers.value = resSpending.value.data || []
-      filteredCustomers.value = resSpending.value.data || []
-    } else {
-      console.error("Lỗi API spending:", resSpending.reason)
-    }
-
-    if (resTop.status === 'fulfilled') {
-      topCustomers.value = resTop.value.data || []
-    } else {
-      console.error("Lỗi API Top Customers:", resTop.reason)
-    }
+    customers.value = resSpending.data || []
+    topCustomers.value = resTop.data || []
+    applyFilter()
   } catch (err) {
-    message.error("Lỗi hệ thống khi tải dữ liệu chi tiêu")
+    message.error(getErrorMessage(err, 'Không tải được thống kê chi tiêu khách hàng'))
   } finally {
     loading.value = false
   }
 }
 
-/* ================= BỘ LỌC & TÌM KIẾM ================= */
 const applyFilter = () => {
   let data = [...customers.value]
+  const keyword = searchText.value.trim().toLowerCase()
 
-  if (searchText.value) {
+  if (keyword) {
     data = data.filter(c =>
-      c.customerName?.toLowerCase().includes(searchText.value.toLowerCase())
+      c.customerName?.toLowerCase().includes(keyword)
+      || c.customerEmail?.toLowerCase().includes(keyword)
+      || c.phone?.includes(keyword)
     )
   }
 
-  if (spendingFilter.value !== "ALL") {
-    data = data.filter(c => (c.totalSpent || 0) >= Number(spendingFilter.value))
+  if (spendingFilter.value !== 'ALL') {
+    data = data.filter(c => Number(c.totalSpent || 0) >= Number(spendingFilter.value))
   }
 
-  data.sort((a, b) =>
-    sortOrder.value === "DESC"
-      ? (b.totalSpent || 0) - (a.totalSpent || 0)
-      : (a.totalSpent || 0) - (b.totalSpent || 0)
-  )
+  data.sort((a, b) => sortOrder.value === 'DESC'
+    ? Number(b.totalSpent || 0) - Number(a.totalSpent || 0)
+    : Number(a.totalSpent || 0) - Number(b.totalSpent || 0))
 
   filteredCustomers.value = data
 }
 
 const columns = [
-  { title: "Mã khách", dataIndex: "customerId", key: "customerId", width: 120 },
-  { title: "Tên khách hàng", dataIndex: "customerName", key: "customerName" },
-  { title: "Tổng chi tiêu", dataIndex: "totalSpent", key: "totalSpent", align: 'right' },
-  { title: "Số đơn đã mua", dataIndex: "orderCount", key: "orderCount", align: 'center' }
+  { title: 'Mã khách', dataIndex: 'customerId', key: 'customerId', width: 100 },
+  { title: 'Tên khách hàng', dataIndex: 'customerName', key: 'customerName' },
+  { title: 'Email', dataIndex: 'customerEmail', key: 'customerEmail' },
+  { title: 'Hạng', dataIndex: 'rankName', key: 'rankName', align: 'center' },
+  { title: 'Điểm', dataIndex: 'point', key: 'point', align: 'center' },
+  { title: 'Tổng chi tiêu', dataIndex: 'totalSpent', key: 'totalSpent', align: 'right' },
+  { title: 'Số đơn đã mua', dataIndex: 'orderCount', key: 'orderCount', align: 'center' },
 ]
 
 onMounted(fetchSpendingData)
@@ -88,22 +76,20 @@ onMounted(fetchSpendingData)
   <div class="spending-page">
     <div class="page-header">
       <h2>🏆 Thống kê chi tiêu khách hàng</h2>
-      <p style="color: #8c8c8c">Dữ liệu được cập nhật dựa trên tổng hóa đơn đã thanh toán thành công</p>
+      <p style="color: #8c8c8c">Tính theo đơn đã hoàn thành/thanh toán, đã trừ phần hoàn tiền nếu có.</p>
     </div>
 
     <a-row :gutter="16" class="top-cards">
       <a-col :span="8" v-for="(rank, index) in ['🥇 Quán quân', '🥈 Á quân', '🥉 Top 3']" :key="index">
         <a-card :bordered="false" class="rank-card" :class="`rank-${index + 1}`">
-          <a-statistic :title="rank" :value="topCustomers[index]?.totalSpent || 0" :precision="0" suffix="₫"
+          <a-statistic :title="rank" :value="Number(topCustomers[index]?.totalSpent || 0)" :precision="0" suffix="₫"
             :value-style="{ color: '#fff', fontWeight: 'bold' }">
             <template #prefix>
               <trophy-outlined v-if="index === 0" />
               <user-outlined v-else />
             </template>
           </a-statistic>
-          <div class="customer-name">
-            {{ topCustomers[index]?.customerName || 'Chưa có dữ liệu' }}
-          </div>
+          <div class="customer-name">{{ topCustomers[index]?.customerName || 'Chưa có dữ liệu' }}</div>
         </a-card>
       </a-col>
     </a-row>
@@ -111,9 +97,9 @@ onMounted(fetchSpendingData)
     <a-card class="main-card">
       <template #title>
         <div class="table-toolbar">
-          <a-space size="middle">
-            <a-input v-model:value="searchText" placeholder="Tìm tên khách..." style="width: 250px" allow-clear
-              @pressEnter="applyFilter">
+          <a-space size="middle" wrap>
+            <a-input v-model:value="searchText" placeholder="Tìm tên, email, SĐT..." style="width: 260px" allow-clear
+              @change="applyFilter" @pressEnter="applyFilter">
               <template #prefix><search-outlined /></template>
             </a-input>
 
@@ -137,8 +123,11 @@ onMounted(fetchSpendingData)
           <template v-if="column.key === 'totalSpent'">
             <b style="color: #f5222d; font-size: 15px">{{ formatMoney(record.totalSpent) }}</b>
           </template>
-          <template v-if="column.key === 'orderCount'">
+          <template v-else-if="column.key === 'orderCount'">
             <a-tag color="blue">{{ record.orderCount || 0 }} đơn</a-tag>
+          </template>
+          <template v-else-if="column.key === 'rankName'">
+            <a-tag color="gold">{{ record.rankName || 'BRONZE' }}</a-tag>
           </template>
         </template>
       </a-table>
@@ -147,60 +136,15 @@ onMounted(fetchSpendingData)
 </template>
 
 <style scoped>
-.spending-page {
-  padding: 8px;
-}
-
-.page-header {
-  margin-bottom: 24px;
-}
-
-.top-cards {
-  margin-bottom: 24px;
-}
-
-.rank-card {
-  border-radius: 12px;
-  transition: transform 0.3s;
-  color: white;
-}
-
-.rank-card:hover {
-  transform: translateY(-5px);
-}
-
-/* Màu sắc cho các thẻ hạng */
-.rank-1 {
-  background: linear-gradient(135deg, #ff9c6e 0%, #fa8c16 100%);
-  box-shadow: 0 4px 12px rgba(250, 140, 22, 0.3);
-}
-
-.rank-2 {
-  background: linear-gradient(135deg, #69c0ff 0%, #1890ff 100%);
-  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
-}
-
-.rank-3 {
-  background: linear-gradient(135deg, #95de64 0%, #52c41a 100%);
-  box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3);
-}
-
-.customer-name {
-  margin-top: 12px;
-  font-size: 16px;
-  font-weight: 600;
-  text-align: right;
-  opacity: 0.9;
-}
-
-.main-card {
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
-}
-
-.table-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+.spending-page { padding: 8px; }
+.page-header { margin-bottom: 24px; }
+.top-cards { margin-bottom: 24px; }
+.rank-card { border-radius: 12px; transition: transform 0.3s; color: white; }
+.rank-card:hover { transform: translateY(-5px); }
+.rank-1 { background: linear-gradient(135deg, #ff9c6e 0%, #fa8c16 100%); box-shadow: 0 4px 12px rgba(250, 140, 22, 0.3); }
+.rank-2 { background: linear-gradient(135deg, #69c0ff 0%, #1890ff 100%); box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3); }
+.rank-3 { background: linear-gradient(135deg, #95de64 0%, #52c41a 100%); box-shadow: 0 4px 12px rgba(82, 196, 26, 0.3); }
+.customer-name { margin-top: 12px; font-size: 16px; font-weight: 600; text-align: right; opacity: 0.9; }
+.main-card { border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); }
+.table-toolbar { display: flex; align-items: center; justify-content: space-between; }
 </style>

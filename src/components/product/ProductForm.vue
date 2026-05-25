@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { createProduct, updateProduct, getMaterials, getSoles } from '@/api/product.api'
 import { getCategories } from '@/api/category.api'
 import UploadImage from './UploadImage.vue'
@@ -107,6 +108,7 @@ const setThumbnail = (index) => {
 }
 
 const submit = async () => {
+  if (loading.value) return
   if (!form.value.name?.trim() || !form.value.sku?.trim() || !form.value.categoryIds.length) {
     return message.error('Vui lòng điền đầy đủ thông tin bắt buộc!')
   }
@@ -146,7 +148,7 @@ const submit = async () => {
     emit('success')
     emit('update:open', false)
   } catch (e) {
-    message.error(e?.response?.data?.message || 'Thao tác thất bại!')
+    message.error(getErrorMessage(e, 'Thao tác thất bại!'))
   } finally {
     loading.value = false
   }

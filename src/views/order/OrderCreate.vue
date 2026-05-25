@@ -63,6 +63,96 @@
               description="Đơn tại cửa hàng không áp dụng phí ship. Hệ thống sẽ tự đặt phí ship = 0."
             />
 
+
+            <a-card v-if="!isOffline" size="small" class="online-info-card" :bordered="false">
+              <template #title>Thông tin người đặt</template>
+
+              <a-form-item label="Họ tên người đặt" required>
+                <a-input v-model:value="form.ordererName" placeholder="Họ tên người đặt" />
+              </a-form-item>
+
+              <a-form-item label="Email">
+                <a-input v-model:value="form.ordererEmail" placeholder="Nhập email" />
+              </a-form-item>
+
+              <a-form-item label="Số điện thoại" required>
+                <a-input v-model:value="form.ordererPhone" placeholder="Nhập số điện thoại" />
+              </a-form-item>
+            </a-card>
+
+            <a-card v-if="!isOffline" size="small" class="online-info-card" :bordered="false">
+              <template #title>Thông tin giao hàng</template>
+
+              <a-form-item>
+                <a-checkbox v-model:checked="form.useOrdererAsReceiver">
+                  Lấy thông tin người đặt làm người nhận (Họ tên & SĐT)
+                </a-checkbox>
+              </a-form-item>
+
+              <a-form-item label="Người nhận" required>
+                <a-input
+                  v-model:value="form.receiverName"
+                  placeholder="Nhập tên người nhận"
+                  :disabled="form.useOrdererAsReceiver"
+                />
+              </a-form-item>
+
+              <a-form-item label="Số điện thoại nhận hàng" required>
+                <a-input
+                  v-model:value="form.receiverPhone"
+                  placeholder="Nhập số điện thoại người nhận"
+                  :disabled="form.useOrdererAsReceiver"
+                />
+              </a-form-item>
+
+              <a-form-item label="Nhãn địa chỉ">
+                <a-input v-model:value="form.addressLabel" placeholder="Ví dụ: Nhà riêng, Công ty..." />
+              </a-form-item>
+
+              <a-form-item label="Tỉnh / Thành phố" required>
+                <a-select
+                  v-model:value="selectedProvinceCode"
+                  show-search
+                  allow-clear
+                  :loading="addressLoading"
+                  :options="provinceOptions"
+                  :filter-option="filterAddressOption"
+                  placeholder="Chọn tỉnh / thành phố"
+                  @change="handleProvinceChange"
+                />
+              </a-form-item>
+
+              <a-form-item label="Quận / Huyện" required>
+                <a-select
+                  v-model:value="selectedDistrictCode"
+                  show-search
+                  allow-clear
+                  :disabled="!selectedProvinceCode"
+                  :options="districtOptions"
+                  :filter-option="filterAddressOption"
+                  placeholder="Chọn quận / huyện"
+                  @change="handleDistrictChange"
+                />
+              </a-form-item>
+
+              <a-form-item label="Phường / Xã" required>
+                <a-select
+                  v-model:value="selectedWardCode"
+                  show-search
+                  allow-clear
+                  :disabled="!selectedDistrictCode"
+                  :options="wardOptions"
+                  :filter-option="filterAddressOption"
+                  placeholder="Chọn phường / xã"
+                  @change="handleWardChange"
+                />
+              </a-form-item>
+
+              <a-form-item label="Địa chỉ chi tiết" required>
+                <a-input v-model:value="form.shippingDetailAddress" placeholder="Số nhà, ngõ ngách, tên đường..." />
+              </a-form-item>
+            </a-card>
+
            <a-row :gutter="12">
               <a-col :span="12">
                 <a-form-item label="Phí ship">
@@ -498,6 +588,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import api from '@/api/axios'
 import { getProducts, getProductDetail } from '@/api/product.api'
 import { createOrder } from '@/api/order.api'
@@ -522,6 +613,12 @@ const fallbackImage = 'https://via.placeholder.com/48x48?text=No+Img'
 
 const saving = ref(false)
 
+const addressLoading = ref(false)
+const vietnamAdministrativeUnits = ref([])
+const selectedProvinceCode = ref(null)
+const selectedDistrictCode = ref(null)
+const selectedWardCode = ref(null)
+
 const form = reactive({
   customerId: null,
   channel: 'OFFLINE',
@@ -530,7 +627,19 @@ const form = reactive({
   discountAmount: 0,
   note: '',
   voucherId: null,
-  freeShipVoucherId: null
+  freeShipVoucherId: null,
+  ordererName: '',
+  ordererEmail: '',
+  ordererPhone: '',
+  useOrdererAsReceiver: true,
+  receiverName: '',
+  receiverPhone: '',
+  addressLabel: '',
+  shippingProvince: '',
+  shippingDistrict: '',
+  shippingWard: '',
+  shippingDetailAddress: '',
+  shippingAddressLine: ''
 })
 
 const items = reactive([])
@@ -547,12 +656,104 @@ const channelOptions = [
   { value: 'ONLINE', label: 'Online' },
 ]
 
-const paymentMethodOptions = [
-  { value: 'CASH', label: 'Tiền mặt' },
-  { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
-]
+const paymentMethodOptions = computed(() => {
+  if (form.channel === 'ONLINE') {
+    return [
+      { value: 'COD', label: 'COD' },
+      { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
+    ]
+  }
+  return [
+    { value: 'CASH', label: 'Tiền mặt tại quầy' },
+    { value: 'BANK_TRANSFER', label: 'Chuyển khoản' },
+    { value: 'COD', label: 'COD' },
+  ]
+})
 
 const isOffline = computed(() => form.channel === 'OFFLINE')
+
+const provinceOptions = computed(() =>
+  vietnamAdministrativeUnits.value.map((province) => ({
+    value: province.code,
+    label: province.name,
+  }))
+)
+
+const selectedProvince = computed(() =>
+  vietnamAdministrativeUnits.value.find((province) => province.code === selectedProvinceCode.value) || null
+)
+
+const districtOptions = computed(() =>
+  (selectedProvince.value?.districts || []).map((district) => ({
+    value: district.code,
+    label: district.name,
+  }))
+)
+
+const selectedDistrict = computed(() =>
+  (selectedProvince.value?.districts || []).find((district) => district.code === selectedDistrictCode.value) || null
+)
+
+const wardOptions = computed(() =>
+  (selectedDistrict.value?.wards || []).map((ward) => ({
+    value: ward.code,
+    label: ward.name,
+  }))
+)
+
+const filterAddressOption = (input, option) =>
+  String(option?.label || '')
+    .toLowerCase()
+    .includes(String(input || '').toLowerCase())
+
+const resetDistrictAndWard = () => {
+  selectedDistrictCode.value = null
+  selectedWardCode.value = null
+  form.shippingDistrict = ''
+  form.shippingWard = ''
+}
+
+const handleProvinceChange = (value, option) => {
+  form.shippingProvince = option?.label || ''
+  resetDistrictAndWard()
+}
+
+const handleDistrictChange = (value, option) => {
+  form.shippingDistrict = option?.label || ''
+  selectedWardCode.value = null
+  form.shippingWard = ''
+}
+
+const handleWardChange = (value, option) => {
+  form.shippingWard = option?.label || ''
+}
+
+const fetchVietnamAdministrativeUnits = async () => {
+  addressLoading.value = true
+  try {
+    const res = await fetch('https://provinces.open-api.vn/api/?depth=3')
+    if (!res.ok) throw new Error('Cannot load Vietnam administrative units')
+    const data = await res.json()
+    vietnamAdministrativeUnits.value = Array.isArray(data) ? data : []
+  } catch {
+    vietnamAdministrativeUnits.value = []
+    message.warning('Không tải được dữ liệu Tỉnh/Huyện/Xã Việt Nam. Vui lòng kiểm tra kết nối mạng.')
+  } finally {
+    addressLoading.value = false
+  }
+}
+
+const syncReceiverFromOrderer = () => {
+  if (!form.useOrdererAsReceiver) return
+  form.receiverName = form.ordererName
+  form.receiverPhone = form.ordererPhone
+}
+
+watch(
+  () => [form.useOrdererAsReceiver, form.ordererName, form.ordererPhone],
+  syncReceiverFromOrderer,
+  { immediate: true }
+)
 
 const itemColumns = [
   { title: 'Ảnh', key: 'image', width: 72 },
@@ -756,8 +957,27 @@ const fetchCustomers = async () => {
 watch(
   () => form.channel,
   (channel) => {
+    if (channel === 'ONLINE' && form.paymentMethod === 'CASH') {
+      form.paymentMethod = 'COD'
+    }
     if (channel === 'OFFLINE') {
       form.shippingFee = 0
+      form.ordererName = ''
+      form.ordererEmail = ''
+      form.ordererPhone = ''
+      form.receiverName = ''
+      form.receiverPhone = ''
+      form.addressLabel = ''
+      form.shippingProvince = ''
+      form.shippingDistrict = ''
+      form.shippingWard = ''
+      selectedProvinceCode.value = null
+      selectedDistrictCode.value = null
+      selectedWardCode.value = null
+      form.shippingDetailAddress = ''
+      form.shippingAddressLine = ''
+    } else {
+      syncReceiverFromOrderer()
     }
   },
   { immediate: true }
@@ -1012,6 +1232,50 @@ const calculateGroupDiscount = async () => {
   groupDiscounts.value = [];
 };
 
+const isBlank = (value) => !value || !String(value).trim()
+
+const validateOnlineShippingInfo = () => {
+  if (isOffline.value) return true
+
+  if (isBlank(form.ordererName)) {
+    message.warning('Họ tên người đặt không được để trống')
+    return false
+  }
+  if (isBlank(form.ordererPhone)) {
+    message.warning('Số điện thoại người đặt không được để trống')
+    return false
+  }
+  if (!isBlank(form.ordererEmail) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(form.ordererEmail).trim())) {
+    message.warning('Email không đúng định dạng')
+    return false
+  }
+  if (isBlank(form.receiverName)) {
+    message.warning('Người nhận không được để trống')
+    return false
+  }
+  if (isBlank(form.receiverPhone)) {
+    message.warning('Số điện thoại nhận hàng không được để trống')
+    return false
+  }
+  if (isBlank(form.shippingProvince)) {
+    message.warning('Tỉnh / Thành phố không được để trống')
+    return false
+  }
+  if (isBlank(form.shippingDistrict)) {
+    message.warning('Quận / Huyện không được để trống')
+    return false
+  }
+  if (isBlank(form.shippingWard)) {
+    message.warning('Phường / Xã không được để trống')
+    return false
+  }
+  if (isBlank(form.shippingDetailAddress)) {
+    message.warning('Địa chỉ chi tiết không được để trống')
+    return false
+  }
+  return true
+}
+
 const validateOrder = () => {
   normalizeNumberFields()
 
@@ -1024,6 +1288,13 @@ const validateOrder = () => {
     message.warning('Phương thức thanh toán không được để trống')
     return false
   }
+
+  if (form.channel === 'ONLINE' && form.paymentMethod === 'CASH') {
+    message.warning('Đơn online chỉ hỗ trợ COD hoặc chuyển khoản.')
+    return false
+  }
+
+  if (!validateOnlineShippingInfo()) return false
 
   if (isOffline.value && Number(form.shippingFee || 0) !== 0) {
     message.warning('Đơn bán tại cửa hàng không được có phí ship')
@@ -1092,6 +1363,22 @@ const handleCreate = async () => {
       channel: form.channel,
       paymentMethod: form.paymentMethod,
       shippingFee: isOffline.value ? 0 : Number(form.shippingFee || 0),
+      ordererName: isOffline.value ? null : String(form.ordererName || '').trim(),
+      ordererEmail: isOffline.value ? null : String(form.ordererEmail || '').trim(),
+      ordererPhone: isOffline.value ? null : String(form.ordererPhone || '').trim(),
+      receiverName: isOffline.value ? null : String(form.receiverName || '').trim(),
+      receiverPhone: isOffline.value ? null : String(form.receiverPhone || '').trim(),
+      addressLabel: isOffline.value ? null : String(form.addressLabel || '').trim(),
+      shippingProvince: isOffline.value ? null : String(form.shippingProvince || '').trim(),
+      shippingDistrict: isOffline.value ? null : String(form.shippingDistrict || '').trim(),
+      shippingWard: isOffline.value ? null : String(form.shippingWard || '').trim(),
+      shippingDetailAddress: isOffline.value ? null : String(form.shippingDetailAddress || '').trim(),
+      shippingAddressLine: isOffline.value
+        ? null
+        : [form.shippingDetailAddress, form.shippingWard, form.shippingDistrict, form.shippingProvince]
+            .map(v => String(v || '').trim())
+            .filter(Boolean)
+            .join(', '),
 
       // 🔥 FIX 1: Cộng cả tiền giảm giá của Hạng Kim Cương/Vàng vào đây
       discountAmount: Number(summary.value.discount || 0) + Number(summary.value.rankDiscount || 0),
@@ -1118,7 +1405,7 @@ const handleCreate = async () => {
     if (id) router.push(`/orders/${id}`)
     else router.push('/orders')
   } catch (e) {
-    message.error(typeof e.response?.data === 'string' ? e.response.data : 'Tạo đơn thất bại')
+    message.error(getErrorMessage(e, 'Tạo đơn thất bại'))
   } finally {
     saving.value = false
   }
@@ -1178,6 +1465,7 @@ onMounted(() => {
   fetchCustomers()
   searchProducts()
   fetchVouchers(null) // Tải voucher công khai ngay khi mở trang cho khách lẻ
+  fetchVietnamAdministrativeUnits()
 })
 
 
@@ -1222,6 +1510,12 @@ onMounted(async () => {
 
 .summary-card {
   margin-top: 16px;
+}
+
+.online-info-card {
+  margin-bottom: 16px;
+  background: #f8fafc;
+  border-radius: 14px;
 }
 
 .summary-list {

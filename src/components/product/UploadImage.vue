@@ -10,42 +10,21 @@ const props = defineProps({
 const modelValue = defineModel({ default: [] })
 const loading = ref(false)
 
-// Hàm helper để chuẩn hóa đường dẫn, tự động gắn domain backend nếu thiếu
-const formatUrl = (path) => {
-  if (!path) return '';
-  return path.startsWith('http') ? path : `http://localhost:8080/${path}`;
-}
-
-// Watcher này đảm bảo khi truyền dữ liệu từ component cha vào (lúc Edit sản phẩm),
-// tất cả các ảnh bị thiếu domain sẽ được chuẩn hóa thành link tuyệt đối.
-watch(() => modelValue.value, (newVal) => {
-  if (newVal && newVal.length > 0) {
-    newVal.forEach(img => {
-      if (img.url && !img.url.startsWith('http')) {
-        img.url = formatUrl(img.url);
-      }
-    });
-  }
-}, { deep: true, immediate: true });
-
 const upload = async ({ file }) => {
   try {
     loading.value = true
     const res = await uploadProductImage(file)
-    
-    // Gắn luôn link full khi vừa upload xong để form cha nhận đúng chuẩn
-    const fullUrl = formatUrl(res.data.url)
 
     if (props.single) {
       modelValue.value = [
         {
-          url: fullUrl,
+          url: res.data.url,
           thumbnail: true
         }
       ]
     } else {
       modelValue.value.push({
-        url: fullUrl,
+        url: res.data.url,
         thumbnail: modelValue.value.length === 0
       })
     }
@@ -77,7 +56,7 @@ const removeImage = (index) => {
 <template>
   <div class="image-list">
     <div v-for="(img, index) in modelValue" :key="index" class="image-item">
-      <img :src="img.url" />
+      <img :src="img.url.startsWith('http') ? img.url : `http://localhost:8080/${img.url}`" />
 
       <div class="actions">
         <a-button v-if="!img.thumbnail" size="small" type="primary" @click="setThumbnail(index)">

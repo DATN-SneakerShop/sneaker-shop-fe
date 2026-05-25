@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { getMaterials, saveMaterial, deleteMaterial } from '@/api/product.api' // 🔥 Sửa bỏ chữ 's'
 import { message, Modal } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { PlusOutlined, EditOutlined, EyeInvisibleOutlined } from '@ant-design/icons-vue'
 
 const list = ref([]); const loading = ref(false); const open = ref(false)
@@ -21,7 +22,7 @@ const handleSave = async () => {
     message.success('Thành công');
     open.value = false;
     fetch()
-  } catch (e) { message.error(e.response?.data?.message || 'Lỗi lưu dữ liệu') }
+  } catch (e) { message.error(getErrorMessage(e, 'Lỗi lưu dữ liệu')) }
 }
 
 const handleHide = (id) => {

@@ -278,8 +278,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { message } from 'ant-design-vue'
+import { getErrorMessage } from '@/utils/error'
 import { useRoute, useRouter } from 'vue-router'
 import { getStorefrontProductDetail } from '@/api/product.api'
 import { addToCart } from '@/api/cart.api'
@@ -301,9 +302,36 @@ const loading = ref(true)
 const error = ref('')
 
 const activeImageUrl = ref('')
-const fallbackImage = 'https://via.placeholder.com/600x600?text=No+Image'
+
+function scrollProductDetailToTop() {
+  nextTick(() => {
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+    }
+  })
+}
+
+function svgPlaceholder(label = 'No Image', width = 600, height = 600) {
+  const safeLabel = String(label)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+      <rect width="100%" height="100%" fill="#f3f4f6"/>
+      <rect x="18" y="18" width="${width - 36}" height="${height - 36}" rx="16" fill="none" stroke="rgba(0,0,0,0.06)" stroke-width="2"/>
+      <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="42" font-weight="800" fill="#111827">${safeLabel}</text>
+    </svg>
+  `
+
+  return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`
+}
+
+const fallbackImage = svgPlaceholder('No Image')
 
 const loadProductDetail = async () => {
+  scrollProductDetailToTop()
   loading.value = true
   error.value = ''
 
@@ -314,32 +342,19 @@ const loadProductDetail = async () => {
     product.value = data
     variants.value = data.variants || []
 
-    let images = []
-
-    if (data.thumbnail) {
-      const normalizedThumb = normalizeImageUrl(data.thumbnail)
-      images.push({
-        url: normalizedThumb,
-        thumbnail: normalizedThumb,
-      })
-    }
-
-    if (data.images && data.images.length) {
-      const extraImages = data.images
-        .filter(img => img.url !== data.thumbnail)
-        .map(img => ({
-          ...img,
-          url: normalizeImageUrl(img.url),
-          thumbnail: normalizeImageUrl(img.thumbnail || img.url),
-        }))
-
-      images = [...images, ...extraImages]
-    }
+    const images = buildProductImages(data, variants.value)
+    const mainImage = resolveMainProductImage(data, variants.value, images)
 
     allImages.value = images
-    activeImageUrl.value = images.length ? images[0].url : fallbackImage
+    activeImageUrl.value = mainImage
 
-    initDefaultVariant()
+    // Chỉ tự chọn biến thể mặc định để hiển thị giá/tồn kho.
+    // KHÔNG đổi ảnh ở lần load đầu, vì yêu cầu là vào chi tiết phải show ngay ảnh đại diện của sản phẩm.
+    initDefaultVariant(false)
+
+    if (!activeImageUrl.value || activeImageUrl.value === fallbackImage) {
+      activeImageUrl.value = mainImage || fallbackImage
+    }
   } catch (e) {
     error.value = 'Không thể tải thông tin sản phẩm. Vui lòng thử lại sau.'
     console.error('Lỗi tải chi tiết SP:', e)
@@ -349,7 +364,13 @@ const loadProductDetail = async () => {
 }
 
 onMounted(loadProductDetail)
-watch(() => route.params.id, loadProductDetail)
+watch(() => route.params.id, () => {
+  quantity.value = 1
+  selectedColor.value = ''
+  selectedSize.value = ''
+  activeImageUrl.value = ''
+  loadProductDetail()
+})
 
 const availableColors = computed(() => {
   return [...new Set(variants.value.map(v => v.colorway).filter(Boolean))]
@@ -399,7 +420,7 @@ const currentDisplayImage = computed(() => {
   return activeImageUrl.value || fallbackImage
 })
 
-function initDefaultVariant() {
+function initDefaultVariant(shouldSyncVariantImage = true) {
   if (!variants.value.length) return
 
   const firstAvailable = variants.value.find(v => v.stock > 0) || variants.value[0]
@@ -407,7 +428,10 @@ function initDefaultVariant() {
   if (firstAvailable) {
     selectedColor.value = firstAvailable.colorway
     selectedSize.value = firstAvailable.size
-    updateImageFromVariant(firstAvailable)
+
+    if (shouldSyncVariantImage) {
+      updateImageFromVariant(firstAvailable)
+    }
   }
 }
 
@@ -459,15 +483,16 @@ function selectImage(url) {
 }
 
 function updateImageFromVariant(variant) {
-  if (variant && variant.imageUrl) {
-    activeImageUrl.value = normalizeImageUrl(variant.imageUrl)
-  } else if (allImages.value.length > 0) {
-    activeImageUrl.value = allImages.value[0].url
+  const variantImage = normalizeImageUrl(variant?.imageUrl)
+  if (variantImage && variantImage !== fallbackImage) {
+    activeImageUrl.value = variantImage
   }
 }
 
 function handleImageError(e) {
-  e.target.src = fallbackImage
+  if (e?.target?.src !== fallbackImage) {
+    e.target.src = fallbackImage
+  }
 }
 
 function increaseQty() {
@@ -504,7 +529,7 @@ async function handleAddToCart() {
 
     message.success('Đã thêm sản phẩm vào giỏ hàng')
   } catch (e) {
-    message.error(e.response?.data || 'Không thể thêm vào giỏ hàng')
+    message.error(getErrorMessage(e, 'Không thể thêm vào giỏ hàng'))
   }
 }
 
@@ -521,19 +546,93 @@ function formatVnd(value) {
     currency: 'VND'
   }).format(value)
 }
-const FILE_BASE_URL = 'http://localhost:8080'
+function getImageValue(img) {
+  if (!img) return ''
+  if (typeof img === 'string') return img
+  return img.url || img.imageUrl || img.path || img.filePath || img.thumbnail || ''
+}
+
+function isPrimaryImage(img) {
+  if (!img || typeof img !== 'object') return false
+  return !!(img.thumbnail || img.isThumbnail || img.isMain || img.isPrimary || img.main || img.primary)
+}
+
+function pushUniqueImage(images, value, thumbnail) {
+  const url = normalizeImageUrl(value)
+  if (!url || url === fallbackImage || images.some(img => img.url === url)) return
+
+  images.push({
+    url,
+    thumbnail: normalizeImageUrl(thumbnail || value),
+  })
+}
+
+function buildProductImages(data, variantList) {
+  const images = []
+
+  pushUniqueImage(images, data?.thumbnail)
+  pushUniqueImage(images, data?.imageUrl)
+
+  const gallery = Array.isArray(data?.images) ? data.images : []
+  const primaryImages = gallery.filter(isPrimaryImage)
+  const normalImages = gallery.filter(img => !isPrimaryImage(img))
+
+  primaryImages.forEach(img => pushUniqueImage(images, getImageValue(img), img?.thumbnail || img?.thumbnailUrl))
+  normalImages.forEach(img => pushUniqueImage(images, getImageValue(img), img?.thumbnail || img?.thumbnailUrl))
+
+  ;(variantList || []).forEach(variant => pushUniqueImage(images, variant?.imageUrl))
+
+  return images
+}
+
+function resolveMainProductImage(data, variantList, images) {
+  const candidates = [
+    data?.thumbnail,
+    route.query?.img,
+    data?.imageUrl,
+    ...(Array.isArray(data?.images) ? data.images.filter(isPrimaryImage).map(getImageValue) : []),
+    ...(images || []).map(img => img.url),
+    ...(variantList || []).map(variant => variant?.imageUrl),
+  ]
+
+  for (const candidate of candidates) {
+    const url = normalizeImageUrl(candidate)
+    if (url && url !== fallbackImage) return url
+  }
+
+  return fallbackImage
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'
+const FILE_BASE_URL = API_BASE_URL.replace(/\/api\/?$/, '')
 
 function normalizeImageUrl(path) {
   if (!path) return fallbackImage
 
-  const value = String(path).trim()
+  let value = String(path).trim()
+  if (!value) return fallbackImage
+
+  value = value.replace(/\\/g, '/')
 
   if (
     value.startsWith('http://') ||
     value.startsWith('https://') ||
-    value.startsWith('data:')
+    value.startsWith('data:') ||
+    value.startsWith('blob:')
   ) {
     return value
+  }
+
+  const lowerValue = value.toLowerCase()
+  const uploadIndex = lowerValue.lastIndexOf('/uploads/')
+  if (uploadIndex >= 0) {
+    value = value.substring(uploadIndex)
+  } else if (lowerValue.startsWith('uploads/')) {
+    value = `/${value}`
+  } else if (lowerValue.includes('uploads/')) {
+    value = `/${value.substring(lowerValue.indexOf('uploads/'))}`
+  } else if (!value.startsWith('/')) {
+    value = `/uploads/${value}`
   }
 
   return `${FILE_BASE_URL}${value.startsWith('/') ? '' : '/'}${value}`
