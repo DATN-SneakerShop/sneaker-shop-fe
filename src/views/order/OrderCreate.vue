@@ -593,6 +593,11 @@ import api from '@/api/axios'
 import { getProducts, getProductDetail } from '@/api/product.api'
 import { createOrder } from '@/api/order.api'
 import { getCustomerRanks } from '@/api/customer'
+import {
+  fetchVietnamProvinces,
+  fetchVietnamDistricts,
+  fetchVietnamWards,
+} from '@/utils/vietnamAddress'
 
 
 const ranks = ref([])
@@ -713,15 +718,45 @@ const resetDistrictAndWard = () => {
   form.shippingWard = ''
 }
 
-const handleProvinceChange = (value, option) => {
+const handleProvinceChange = async (value, option) => {
   form.shippingProvince = option?.label || ''
   resetDistrictAndWard()
+
+  if (!value) return
+  try {
+    addressLoading.value = true
+    const province = vietnamAdministrativeUnits.value.find((item) => String(item.code) === String(value))
+    const districts = await fetchVietnamDistricts(value)
+    if (province) province.districts = districts
+
+    if (districts.length === 1 && districts[0].source === 'NEW_2025') {
+      selectedDistrictCode.value = districts[0].code
+      form.shippingDistrict = districts[0].name
+      await handleDistrictChange(districts[0].code, { label: districts[0].name })
+    }
+  } catch {
+    message.warning('Không tải được dữ liệu Quận/Huyện của tỉnh đã chọn.')
+  } finally {
+    addressLoading.value = false
+  }
 }
 
-const handleDistrictChange = (value, option) => {
+const handleDistrictChange = async (value, option) => {
   form.shippingDistrict = option?.label || ''
   selectedWardCode.value = null
   form.shippingWard = ''
+
+  if (!selectedProvinceCode.value || !value) return
+  try {
+    addressLoading.value = true
+    const district = selectedDistrict.value
+    const wards = await fetchVietnamWards(selectedProvinceCode.value, value)
+    if (district) district.wards = wards
+  } catch {
+    message.warning('Không tải được dữ liệu Phường/Xã mới nhất.')
+  } finally {
+    addressLoading.value = false
+  }
 }
 
 const handleWardChange = (value, option) => {
@@ -731,13 +766,10 @@ const handleWardChange = (value, option) => {
 const fetchVietnamAdministrativeUnits = async () => {
   addressLoading.value = true
   try {
-    const res = await fetch('https://provinces.open-api.vn/api/?depth=3')
-    if (!res.ok) throw new Error('Cannot load Vietnam administrative units')
-    const data = await res.json()
-    vietnamAdministrativeUnits.value = Array.isArray(data) ? data : []
+    vietnamAdministrativeUnits.value = await fetchVietnamProvinces()
   } catch {
     vietnamAdministrativeUnits.value = []
-    message.warning('Không tải được dữ liệu Tỉnh/Huyện/Xã Việt Nam. Vui lòng kiểm tra kết nối mạng.')
+    message.warning('Không tải được dữ liệu Tỉnh/Huyện/Xã Việt Nam mới nhất. Vui lòng kiểm tra kết nối mạng.')
   } finally {
     addressLoading.value = false
   }

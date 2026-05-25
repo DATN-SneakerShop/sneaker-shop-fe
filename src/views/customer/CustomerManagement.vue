@@ -145,6 +145,12 @@ import {
   saveCustomerAddress,
   deleteCustomerAddress
 } from "@/api/customer"
+import {
+  fetchVietnamProvinces,
+  fetchVietnamDistricts,
+  fetchVietnamWards,
+  findAddressUnitByName,
+} from '@/utils/vietnamAddress'
 
 const customers = ref([])
 const loading = ref(false)
@@ -194,17 +200,16 @@ const handleUpdateCustomer = async () => {
   }
 }
 
-/* ================= API BẢN ĐỒ VIỆT NAM ================= */
+/* ================= API ĐỊA CHỈ VIỆT NAM ĐỒNG BỘ ================= */
 const provincesData = ref([])
 const districtsData = ref([])
 const wardsData = ref([])
 
-const fetchVietnamProvinces = async () => {
+const loadVietnamAddressData = async () => {
   try {
-    const res = await fetch("https://provinces.open-api.vn/api/?depth=3")
-    provincesData.value = await res.json()
+    provincesData.value = await fetchVietnamProvinces()
   } catch {
-    console.error("Không thể tải dữ liệu bản đồ Việt Nam")
+    console.error('Không thể tải dữ liệu địa chỉ Việt Nam mới nhất')
   }
 }
 
@@ -212,18 +217,26 @@ const provinceOptions = computed(() => provincesData.value.map(p => ({ label: p.
 const districtOptions = computed(() => districtsData.value.map(d => ({ label: d.name, value: d.name })))
 const wardOptions = computed(() => wardsData.value.map(w => ({ label: w.name, value: w.name })))
 
-const onProvinceChange = (val) => {
+const onProvinceChange = async (val) => {
   addressForm.value.district = null
   addressForm.value.ward = null
-  const p = provincesData.value.find(x => x.name === val)
-  districtsData.value = p ? p.districts : []
   wardsData.value = []
+
+  const province = findAddressUnitByName(provincesData.value, val)
+  districtsData.value = province ? await fetchVietnamDistricts(province.code) : []
+
+  if (districtsData.value.length === 1 && districtsData.value[0].source === 'NEW_2025') {
+    addressForm.value.district = districtsData.value[0].name
+    await onDistrictChange(districtsData.value[0].name)
+  }
 }
 
-const onDistrictChange = (val) => {
+const onDistrictChange = async (val) => {
   addressForm.value.ward = null
-  const d = districtsData.value.find(x => x.name === val)
-  wardsData.value = d ? d.wards : []
+
+  const province = findAddressUnitByName(provincesData.value, addressForm.value.province)
+  const district = findAddressUnitByName(districtsData.value, val)
+  wardsData.value = province && district ? await fetchVietnamWards(province.code, district.code) : []
 }
 
 /* ================= ĐỊA CHỈ STATE ================= */
@@ -322,6 +335,6 @@ const handleDeleteAddress = async (id) => {
 
 onMounted(() => {
   fetchCustomers()
-  fetchVietnamProvinces()
+  loadVietnamAddressData()
 })
 </script>

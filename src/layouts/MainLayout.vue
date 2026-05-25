@@ -106,6 +106,11 @@
           </a-menu-item>
         </a-sub-menu>
 
+        <a-menu-item v-if="roles.includes('ADMIN') || roles.includes('SALES')" key="admin-chat">
+          <template #icon><message-outlined /></template>
+          <router-link to="/admin/chat">Tin nhắn khách hàng</router-link>
+        </a-menu-item>
+
         <a-menu-item v-if="roles.includes('ADMIN')" key="logs">
           <template #icon><history-outlined /></template>
           <router-link to="/logs">Nhật ký hệ thống</router-link>
@@ -155,7 +160,8 @@ import {
   HistoryOutlined,
   PercentageOutlined,
   LogoutOutlined,
-  ShoppingCartOutlined
+  ShoppingCartOutlined,
+  MessageOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -259,6 +265,8 @@ watch(
     } else if (path.startsWith('/orders')) {
       activeKey.value = ['orders']
       openKeys.value = ['sub-order']
+    } else if (path.startsWith('/admin/chat')) {
+      activeKey.value = ['admin-chat']
     } else if (path.startsWith('/logs')) {
       activeKey.value = ['logs']
     } else if (path.startsWith('/profile')) {

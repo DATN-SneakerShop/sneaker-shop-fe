@@ -141,6 +141,23 @@
             allow-clear
           />
 
+          <a-alert
+            v-if="selectedTemplate && selectedTemplate !== 'FREESHIP'"
+            type="info"
+            show-icon
+            style="margin-bottom: 12px"
+            :message="`Mẫu ${voucherTemplates.find(t => t.type === selectedTemplate)?.title || ''}: có ${eligibleCustomersByTemplate.length} khách đủ điều kiện, đã tích ${selectedCustomerIds.length} khách.`"
+          />
+
+          <a-space v-if="selectedTemplate && selectedTemplate !== 'FREESHIP'" wrap style="margin-bottom: 12px">
+            <a-button size="small" type="primary" ghost @click="selectEligibleCustomers()">
+              Tự tích khách đủ điều kiện
+            </a-button>
+            <a-button size="small" @click="selectedCustomerIds = []">
+              Bỏ chọn tất cả
+            </a-button>
+          </a-space>
+
           <a-table
   size="small"
   :data-source="filteredCustomers"
@@ -148,7 +165,7 @@
   row-key="id"
   :row-selection="rowSelection"
   bordered
-  :scroll="{ x: 800 }"
+  :scroll="{ x: 980 }"
 >
   <a-table-column title="Khách hàng" fixed="left" width="160px">
     <template #default="{ record }">
@@ -184,6 +201,12 @@
   <a-table-column title="Ngày lập" width="100px">
     <template #default="{ record }">
       {{ formatDate(record.createdAt) }}
+    </template>
+  </a-table-column>
+
+  <a-table-column title="Đơn cuối" width="100px">
+    <template #default="{ record }">
+      {{ formatDate(record.lastOrderAt) }}
     </template>
   </a-table-column>
 </a-table>
@@ -241,53 +264,116 @@ const voucherTemplates = [
   { type: 'BIRTHDAY', title: 'Sinh nhật', icon: GiftOutlined, desc: 'Trong tháng này' },
   { type: 'VIP', title: 'Tri ân VIP', icon: CrownOutlined, desc: 'Chi tiêu > 10tr' },
   { type: 'RECALL', title: 'Khách cũ', icon: HistoryOutlined, desc: '30 ngày chưa mua' },
-  { type: 'FIRST_ORDER', title: 'Đơn đầu', icon: ShoppingCartOutlined, desc: 'Đăng ký > 7 ngày' }
+  { type: 'FIRST_ORDER', title: 'Đơn đầu', icon: ShoppingCartOutlined, desc: 'Chưa từng mua' }
 ]
 
-// --- LOGIC APPLY TEMPLATE ---
+// --- LOGIC ÁP DỤNG MẪU NHANH + TỰ CHỌN KHÁCH ĐỦ ĐIỀU KIỆN ---
+const normalizeNumber = (value) => Number(value || 0)
+const daysBetweenNow = (dateValue) => {
+  if (!dateValue) return null
+  const date = dayjs(dateValue)
+  if (!date.isValid()) return null
+  return dayjs().startOf('day').diff(date.startOf('day'), 'day')
+}
+
+const isBirthdayInCurrentMonth = (customer) => {
+  if (!customer?.ngaySinh) return false
+  const birth = dayjs(customer.ngaySinh)
+  return birth.isValid() && birth.month() === dayjs().month()
+}
+
+const isEligibleCustomerForTemplate = (customer, templateType = selectedTemplate.value) => {
+  const totalOrders = normalizeNumber(customer?.totalOrders)
+  const totalSpent = normalizeNumber(customer?.totalSpent)
+  const createdDays = daysBetweenNow(customer?.createdAt)
+  const lastOrderDays = daysBetweenNow(customer?.lastOrderAt)
+  const customerRank = String(customer?.loaiKhach || '').toUpperCase()
+
+  switch (templateType) {
+    case 'NEWBIE':
+      return createdDays !== null && createdDays <= 7
+    case 'BIRTHDAY':
+      return isBirthdayInCurrentMonth(customer)
+    case 'VIP':
+      return customerRank === 'VIP' || totalSpent >= 10000000
+    case 'RECALL':
+      return totalOrders > 0 && lastOrderDays !== null && lastOrderDays >= 30
+    case 'FIRST_ORDER':
+      return totalOrders === 0
+    default:
+      return true
+  }
+}
+
+const eligibleCustomersByTemplate = computed(() => {
+  if (!selectedTemplate.value || selectedTemplate.value === 'FREESHIP') return []
+  return customers.value.filter(c => isEligibleCustomerForTemplate(c, selectedTemplate.value))
+})
+
+const selectEligibleCustomers = (templateType = selectedTemplate.value, silent = false) => {
+  if (!templateType || templateType === 'FREESHIP') {
+    selectedCustomerIds.value = []
+    return
+  }
+
+  const eligibleIds = customers.value
+    .filter(c => isEligibleCustomerForTemplate(c, templateType))
+    .map(c => Number(c.id))
+
+  selectedCustomerIds.value = eligibleIds
+
+  if (!silent) {
+    if (eligibleIds.length > 0) {
+      message.success(`Đã tự động tích ${eligibleIds.length} khách hàng đủ điều kiện.`)
+    } else {
+      message.warning('Chưa có khách hàng nào đủ điều kiện theo mẫu này.')
+    }
+  }
+}
+
 const applyTemplate = (tpl) => {
   selectedTemplate.value = tpl.type
   const now = new Date()
-  form.value.isPublic = false // Chuyển sang riêng tư để hiện bảng khách
 
-  const sevenDaysAgo = new Date(); sevenDaysAgo.setDate(now.getDate() - 7)
-  const thirtyDaysAgo = new Date(); thirtyDaysAgo.setDate(now.getDate() - 30)
+  form.value.limitCustomerDays = null
+  form.value.applyBirthdayMonth = false
+  form.value.minCustomerSpent = null
+  form.value.maxDaysSinceLastOrder = null
+  form.value.isFirstOrderOnly = false
+  form.value.maxDiscount = null
+  selectedCustomerIds.value = []
 
   switch (tpl.type) {
     case 'FREESHIP':
       form.value.name = `Miễn phí vận chuyển tháng ${now.getMonth() + 1}`
       form.value.type = 'SHIPPING'
       form.value.value = 500000
-      form.value.maxDiscount = null
+      form.value.maxDiscount = 500000
       form.value.minOrderValue = 0
       form.value.quantity = 9999
-      form.value.description = 'Giảm tối đa 500k phí ship. Mỗi khách dùng 1 lần.'
-      selectedCustomerIds.value = []
+      form.value.description = 'Giảm tối đa 500k phí ship. Áp dụng công khai cho toàn bộ khách hàng trong thời gian hiệu lực.'
       form.value.isPublic = true
-
-      // ĐÃ FIX LỖI ESLINT: Tính ngày cuối tháng trực tiếp bên trong mảng, không khai báo const
       dateRange.value = [
         dayjs(now),
         dayjs(new Date(now.getFullYear(), now.getMonth() + 1, 0))
       ]
-      break;
+      message.success('Đã tải mẫu Free Ship công khai cho toàn hệ thống!')
+      break
+
     case 'NEWBIE':
-      form.value.name = 'Ưu đãi thành viên mới (Tự động)'
+      form.value.name = 'Ưu đãi thành viên mới'
       form.value.type = 'PERCENT'
       form.value.value = 15
       form.value.maxDiscount = 50000
       form.value.minOrderValue = 0
       form.value.quantity = 9999
-      form.value.description = 'Dành cho khách hàng mới gia nhập trong vòng 7 ngày.'
-      form.value.isPublic = true
+      form.value.description = 'Dành cho khách hàng mới tạo tài khoản trong vòng 7 ngày. Hệ thống đã tự tích khách đủ điều kiện.'
+      form.value.isPublic = false
       form.value.limitCustomerDays = 7
-      selectedCustomerIds.value = []
-      dateRange.value = [
-        dayjs(now),
-        dayjs(now).add(10, 'day')
-      ]
-      message.success('Đã thiết lập mẫu Khách mới tự động áp dụng trong 7 ngày!')
+      dateRange.value = [dayjs(now), dayjs(now).add(10, 'day')]
+      selectEligibleCustomers('NEWBIE')
       break
+
     case 'BIRTHDAY':
       form.value.name = `Quà tặng sinh nhật tháng ${now.getMonth() + 1}`
       form.value.type = 'PERCENT'
@@ -295,61 +381,57 @@ const applyTemplate = (tpl) => {
       form.value.maxDiscount = 200000
       form.value.minOrderValue = 0
       form.value.quantity = 9999
-      form.value.description = 'Dành riêng cho khách hàng có sinh nhật trong tháng này.'
-
-      // THIẾT LẬP TỰ ĐỘNG
-      form.value.isPublic = true // Để công khai
-      form.value.applyBirthdayMonth = true // Bật lọc theo tháng sinh nhật
-      selectedCustomerIds.value = [] // Không cần chọn khách thủ công
-
-      // Hạn dùng từ nay đến cuối tháng
+      form.value.description = 'Dành riêng cho khách hàng có sinh nhật trong tháng hiện tại. Hệ thống đã tự tích khách đủ điều kiện.'
+      form.value.isPublic = false
+      form.value.applyBirthdayMonth = true
       dateRange.value = [
         dayjs(now),
         dayjs(new Date(now.getFullYear(), now.getMonth() + 1, 0))
       ]
-      message.success('Đã thiết lập mẫu Sinh nhật tự động áp dụng cho khách có sinh nhật trong tháng!')
+      selectEligibleCustomers('BIRTHDAY')
       break
+
     case 'VIP':
-      form.value.name = 'Tri ân khách hàng VIP (Tự động)'
-      form.value.type = 'FIXED'; form.value.value = 500000; form.value.minOrderValue = 2000000
-      form.value.description = 'Dành cho khách hàng thân thiết có tổng chi tiêu trên 10 triệu.'
-      form.value.isPublic = true // Công khai để tự động áp dụng
-      form.value.minCustomerSpent = 10000000 // Điều kiện: Tổng chi >= 10tr
-      selectedCustomerIds.value = []
-      dateRange.value = [dayjs(now), dayjs(now).add(10, 'day')] // Hạn 10 ngày
-      message.success('Đã thiết lập mẫu VIP tự động áp dụng cho khách chi tiêu > 10tr!')
+      form.value.name = 'Tri ân khách hàng VIP'
+      form.value.type = 'FIXED'
+      form.value.value = 500000
+      form.value.maxDiscount = null
+      form.value.minOrderValue = 2000000
+      form.value.quantity = 9999
+      form.value.description = 'Dành cho khách VIP hoặc khách có tổng chi tiêu từ 10 triệu trở lên. Hệ thống đã tự tích khách đủ điều kiện.'
+      form.value.isPublic = false
+      form.value.minCustomerSpent = 10000000
+      dateRange.value = [dayjs(now), dayjs(now).add(10, 'day')]
+      selectEligibleCustomers('VIP')
       break
+
     case 'RECALL':
-      form.value.name = 'Món quà trở lại (Tự động)'
-      form.value.type = 'PERCENT'; form.value.value = 25; form.value.maxDiscount = 300000
-      form.value.description = 'Dành cho khách hàng đã hơn 30 ngày chưa phát sinh đơn hàng mới.'
-      form.value.isPublic = true
-      form.value.maxDaysSinceLastOrder = 30 // Điều kiện: Đơn cuối cách đây > 30 ngày
-      selectedCustomerIds.value = []
+      form.value.name = 'Món quà trở lại'
+      form.value.type = 'PERCENT'
+      form.value.value = 25
+      form.value.maxDiscount = 300000
+      form.value.minOrderValue = 0
+      form.value.quantity = 9999
+      form.value.description = 'Dành cho khách đã từng mua nhưng 30 ngày gần đây chưa phát sinh đơn mới. Hệ thống đã tự tích khách đủ điều kiện.'
+      form.value.isPublic = false
+      form.value.maxDaysSinceLastOrder = 30
       dateRange.value = [dayjs(now), dayjs(now).add(10, 'day')]
-      message.success('Đã thiết lập mẫu Khách cũ tự động áp dụng!')
+      selectEligibleCustomers('RECALL')
       break
+
     case 'FIRST_ORDER':
-      form.value.name = 'Ưu đãi đơn hàng đầu tiên (Tự động)'
-      form.value.type = 'FIXED'; form.value.value = 100000; form.value.minOrderValue = 300000
-      form.value.description = 'Chỉ áp dụng cho khách hàng chưa từng mua hàng tại shop.'
-      form.value.isPublic = true
-      form.value.isFirstOrderOnly = true // Điều kiện: Số đơn hàng = 0
-      selectedCustomerIds.value = []
+      form.value.name = 'Ưu đãi đơn hàng đầu tiên'
+      form.value.type = 'FIXED'
+      form.value.value = 100000
+      form.value.maxDiscount = null
+      form.value.minOrderValue = 300000
+      form.value.quantity = 9999
+      form.value.description = 'Chỉ áp dụng cho khách hàng chưa từng mua hàng tại shop. Hệ thống đã tự tích khách đủ điều kiện.'
+      form.value.isPublic = false
+      form.value.isFirstOrderOnly = true
       dateRange.value = [dayjs(now), dayjs(now).add(10, 'day')]
-      message.success('Đã thiết lập mẫu Đơn đầu tự động áp dụng cho khách chưa mua hàng!')
+      selectEligibleCustomers('FIRST_ORDER')
       break
-  }
-
-  if (!form.value.isPublic) {
-    if (selectedCustomerIds.value.length > 0) {
-      message.success(`Đã tự động chọn ${selectedCustomerIds.value.length} khách hàng phù hợp!`)
-    } else {
-      message.warning('Không có khách hàng nào đạt điều kiện của mẫu này.')
-    }
-  } else if (tpl.type === 'FREESHIP') {
-
-    message.success('Đã tải mẫu Free Ship công khai cho toàn hệ thống!')
   }
 }
 
@@ -360,8 +442,18 @@ const formatDate = (date) => date ? new Date(date).toLocaleDateString('vi-VN') :
 
 const goBack = () => router.back()
 const reset = () => {
-  form.value = { name: '', type: 'PERCENT', value: 0, maxDiscount: null, minOrderValue: 0, quantity: 1, isPublic: true }
-  dateRange.value = []; selectedCustomerIds.value = []; selectedTemplate.value = ''
+  form.value = {
+    name: '', type: 'PERCENT', value: 0, maxDiscount: null, minOrderValue: 0, quantity: 1, isPublic: true,
+    // 🔥 Bổ sung reset các điều kiện nâng cao
+    limitCustomerDays: null,
+    applyBirthdayMonth: false,
+    minCustomerSpent: null,
+    maxDaysSinceLastOrder: null,
+    isFirstOrderOnly: false
+  }
+  dateRange.value = [];
+  selectedCustomerIds.value = [];
+  selectedTemplate.value = ''
 }
 
 const filteredCustomers = computed(() =>

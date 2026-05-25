@@ -39,6 +39,15 @@
             </a-button>
 
             <a-button
+              v-if="canResolveBankTransferError"
+              type="primary"
+              class="btn-success"
+              @click="resolveFailedBankTransferAsPaid"
+            >
+              Đã xử lý chuyển khoản
+            </a-button>
+
+            <a-button
               v-if="canMarkPaid"
               class="btn-success"
               @click="quickSetPaymentStatus('PAID')"
@@ -408,6 +417,24 @@
 
 
 
+                  <a-alert
+                    v-if="canShowPaymentFix"
+                    type="warning"
+                    show-icon
+                    message="Đơn chuyển khoản lỗi"
+                    description="Admin có thể xác nhận đã xử lý chuyển khoản để chuyển thanh toán sang Đã thanh toán, hoặc hủy đơn để nhả tồn kho giữ chỗ."
+                  />
+
+                  <a-button
+                    v-if="canResolveBankTransferError"
+                    block
+                    type="primary"
+                    class="action-btn btn-success"
+                    @click="resolveFailedBankTransferAsPaid"
+                  >
+                    Đã xử lý chuyển khoản
+                  </a-button>
+
                   <a-button
                     v-if="canShowPaymentFix"
                     block
@@ -415,7 +442,7 @@
                     class="action-btn"
                     @click="openPaymentModal"
                   >
-                    Xử lý lỗi thanh toán chuyển khoản
+                    Cập nhật thủ công trạng thái thanh toán
                   </a-button>
 
                   <a-button
@@ -1098,11 +1125,12 @@ const isFinalOrder = computed(() => FINAL_ORDER_STATUSES.includes(normalizeCurre
 
 const canShowPaymentFix = computed(() =>
   !!detail.value
-  && isOnlineOrder.value
   && detail.value?.paymentMethod === 'BANK_TRANSFER'
   && detail.value?.paymentStatus === 'FAILED'
   && !['COMPLETED', 'CANCELLED', 'PARTIALLY_RETURNED', 'RETURNED'].includes(normalizeCurrentOrderStatus.value)
 )
+
+const canResolveBankTransferError = computed(() => canShowPaymentFix.value)
 
 const canUpdatePayment = computed(() => canShowPaymentFix.value)
 
@@ -1632,7 +1660,6 @@ const submitQuickShipForm = async () => {
   }
 
   quickShipForm.loading = true
-  let shippingMetaUpdated = false
 
   try {
     await updateAdminOrderMeta(orderId, {
@@ -1640,23 +1667,12 @@ const submitQuickShipForm = async () => {
       shippingCarrier: quickShipForm.shippingCarrier.trim(),
       trackingCode: quickShipForm.trackingCode.trim(),
     })
-    shippingMetaUpdated = true
-
-    await updateAdminOrderStatus(orderId, { status: 'SHIPPING' })
 
     closeQuickShipForm()
     message.success('Đã cập nhật đơn sang trạng thái đang giao hàng')
     await fetchDetail()
   } catch (err) {
     await fetchDetail()
-
-    if (shippingMetaUpdated) {
-      closeQuickShipForm()
-      return message.warning(
-        getErrorMessage(err, 'Đã lưu thông tin vận chuyển, nhưng chưa cập nhật được trạng thái đơn sang Đang giao hàng')
-      )
-    }
-
     message.error(getErrorMessage(err, 'Không cập nhật được trạng thái giao hàng'))
   } finally {
     quickShipForm.loading = false
@@ -1687,7 +1703,7 @@ const openOrderStatusModal = () => {
 
 const openPaymentModal = () => {
   if (!canUpdatePayment.value) {
-    return message.warning('Chỉ đơn online thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
+    return message.warning('Chỉ đơn thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
   }
 
   paymentModal.open = true
@@ -1771,9 +1787,34 @@ const quickShipOrder = () => {
   openQuickShipForm()
 }
 
+const resolveFailedBankTransferAsPaid = () => {
+  if (!canResolveBankTransferError.value) {
+    return message.warning('Chỉ đơn thanh toán chuyển khoản bị lỗi mới được xử lý tại đây.')
+  }
+
+  Modal.confirm({
+    title: 'Xác nhận đã xử lý chuyển khoản?',
+    content: 'Sau khi xác nhận, trạng thái thanh toán sẽ chuyển thành Đã thanh toán và đơn sẽ có thể tiếp tục xử lý/giao hàng. Nếu không tiếp tục bán, hãy chọn Hủy đơn để nhả tồn kho giữ chỗ.',
+    okText: 'Đã xử lý và chuyển sang đã thanh toán',
+    cancelText: 'Đóng',
+    async onOk() {
+      try {
+        await updateAdminOrderMeta(orderId, {
+          paymentStatus: 'PAID',
+          note: 'Admin đã đối soát và xử lý lỗi chuyển khoản; xác nhận đơn đã thanh toán.'
+        })
+        message.success('Đã chuyển trạng thái thanh toán thành Đã thanh toán')
+        await fetchDetail()
+      } catch (err) {
+        message.error(getErrorMessage(err, 'Không thể xử lý lỗi chuyển khoản'))
+      }
+    },
+  })
+}
+
 const quickSetPaymentStatus = (status) => {
   if (isCompletedOrder.value) {
-    return message.warning('Chỉ đơn online thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
+    return message.warning('Chỉ đơn thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
   }
 
   Modal.confirm({
@@ -1862,7 +1903,7 @@ const submitOrderStatusModal = async () => {
 const submitPaymentModal = async () => {
   if (!canUpdatePayment.value) {
     paymentModal.open = false
-    return message.warning('Chỉ đơn online thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
+    return message.warning('Chỉ đơn thanh toán chuyển khoản bị lỗi mới được cập nhật trạng thái thanh toán tại đây.')
   }
   if (!paymentFixStatusOptions.includes(paymentModal.paymentStatus)) {
     return message.warning('Chỉ được giữ trạng thái lỗi hoặc xác nhận đã thanh toán đủ.')

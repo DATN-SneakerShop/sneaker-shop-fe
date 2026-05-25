@@ -318,6 +318,16 @@
 
             <div class="summary-details">
               <div class="summary-row">
+                <span>Tổng số lượng</span>
+                <strong :class="{ 'text-danger': isOverTotalQuantityLimit }">{{ selectedTotalQuantity }} / {{ MAX_TOTAL_ITEMS_PER_ORDER }}</strong>
+              </div>
+
+              <div v-if="isOverTotalQuantityLimit" class="checkout-limit-warning">
+                Tổng số lượng sản phẩm trong đơn không được vượt quá {{ MAX_TOTAL_ITEMS_PER_ORDER }}.
+                Vui lòng quay lại giỏ hàng và giảm số lượng trước khi thanh toán.
+              </div>
+
+              <div class="summary-row">
                 <span>Tạm tính</span>
                 <strong>{{ formatVnd(finalSummary.subtotalAmount) }}</strong>
               </div>
@@ -363,7 +373,7 @@
               class="btn btn-primary btn-block"
               type="button"
               @click="handleSubmitCheckout"
-              :disabled="submitting || previewLoading || !selectedItems.length"
+              :disabled="submitting || previewLoading || !selectedItems.length || isOverTotalQuantityLimit"
             >
               {{ submitting ? 'Đang đặt hàng...' : 'XÁC NHẬN ĐẶT HÀNG' }}
             </button>
@@ -433,6 +443,12 @@ import { previewCheckout, submitCheckout } from '@/api/checkout.api'
 import { useAuthStore } from '@/stores/auth'
 import { useCartStore } from '@/stores/cart'
 import { getCartSessionKey } from '@/utils/cartSession'
+import {
+  fetchVietnamProvinces,
+  fetchVietnamDistricts,
+  fetchVietnamWards,
+  findAddressUnitByName,
+} from '@/utils/vietnamAddress'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -515,9 +531,23 @@ const paymentMethods = [
   },
 ]
 
+const MAX_TOTAL_ITEMS_PER_ORDER = 50
+
 const selectedItems = computed(() =>
   (cart.value.items || []).filter((item) => item.selected),
 )
+
+const selectedTotalQuantity = computed(() =>
+  selectedItems.value.reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+)
+
+const isOverTotalQuantityLimit = computed(() => selectedTotalQuantity.value > MAX_TOTAL_ITEMS_PER_ORDER)
+
+function validateTotalQuantityLimit() {
+  if (!isOverTotalQuantityLimit.value) return true
+  message.warning(`Tổng số lượng sản phẩm trong đơn không được vượt quá ${MAX_TOTAL_ITEMS_PER_ORDER}.`)
+  return false
+}
 
 // XỬ LÝ DỮ LIỆU VOUCHER CHO GIAO DIỆN TICKET MỚI
 const parsedVouchers = computed(() => {
@@ -707,12 +737,10 @@ function fillReceiverFromAddress(address) {
 async function loadProvinces() {
   try {
     provinceLoading.value = true
-    const res = await fetch('https://provinces.open-api.vn/api/p/')
-    const data = await res.json()
-    provinces.value = Array.isArray(data) ? data : []
-  } catch  {
+    provinces.value = await fetchVietnamProvinces()
+  } catch {
     provinces.value = []
-    message.error('Không tải được danh sách tỉnh / thành phố')
+    message.error('Không tải được danh sách tỉnh / thành phố mới nhất')
   } finally {
     provinceLoading.value = false
   }
@@ -726,10 +754,8 @@ async function loadDistricts(provinceCode) {
   }
   try {
     districtLoading.value = true
-    const res = await fetch(`https://provinces.open-api.vn/api/p/${provinceCode}?depth=2`)
-    const data = await res.json()
-    districts.value = Array.isArray(data?.districts) ? data.districts : []
-  } catch  {
+    districts.value = await fetchVietnamDistricts(provinceCode)
+  } catch {
     districts.value = []
     message.error('Không tải được danh sách quận / huyện')
   } finally {
@@ -738,18 +764,16 @@ async function loadDistricts(provinceCode) {
 }
 
 async function loadWards(districtCode) {
-  if (!districtCode) {
+  if (!districtCode || !selectedProvinceCode.value) {
     wards.value = []
     return
   }
   try {
     wardLoading.value = true
-    const res = await fetch(`https://provinces.open-api.vn/api/d/${districtCode}?depth=2`)
-    const data = await res.json()
-    wards.value = Array.isArray(data?.wards) ? data.wards : []
+    wards.value = await fetchVietnamWards(selectedProvinceCode.value, districtCode)
   } catch {
     wards.value = []
-    message.error('Không tải được danh sách phường / xã')
+    message.error('Không tải được danh sách phường / xã mới nhất')
   } finally {
     wardLoading.value = false
   }
@@ -795,19 +819,22 @@ function handleWardChange() {
 
 async function syncLocationSelectionsByName() {
   if (!form.value.shippingProvince || !provinces.value.length) return
-  const normalizeText = (value) => String(value || '').trim().toLowerCase()
 
-  const province = provinces.value.find((item) => normalizeText(item.name) === normalizeText(form.value.shippingProvince))
+  const province = findAddressUnitByName(provinces.value, form.value.shippingProvince)
   if (!province) return
   selectedProvinceCode.value = String(province.code)
   await loadDistricts(province.code)
 
-  const district = districts.value.find((item) => normalizeText(item.name) === normalizeText(form.value.shippingDistrict))
+  let district = findAddressUnitByName(districts.value, form.value.shippingDistrict)
+  if (!district && districts.value.length === 1) {
+    district = districts.value[0]
+    form.value.shippingDistrict = district.name
+  }
   if (!district) return
   selectedDistrictCode.value = String(district.code)
   await loadWards(district.code)
 
-  const ward = wards.value.find((item) => normalizeText(item.name) === normalizeText(form.value.shippingWard))
+  const ward = findAddressUnitByName(wards.value, form.value.shippingWard)
   if (ward) {
     selectedWardCode.value = String(ward.code)
   }
@@ -883,6 +910,8 @@ async function loadCheckoutData() {
 }
 
 async function handlePreview() {
+  if (!validateTotalQuantityLimit()) return
+
   try {
     previewLoading.value = true
     const payload = {
@@ -940,6 +969,7 @@ function validateForm() {
 }
 
 async function handleSubmitCheckout() {
+  if (!validateTotalQuantityLimit()) return
   if (!validateForm()) return
 
   try {
@@ -1435,6 +1465,8 @@ onMounted(async () => {
 .summary-row:last-child { margin-bottom: 0; }
 .summary-row strong { color: #0f172a; }
 .text-success { color: #059669 !important; }
+.text-danger { color: #dc2626 !important; }
+.checkout-limit-warning { margin: 10px 0; padding: 10px 12px; border: 1px solid #fecaca; background: #fef2f2; color: #b91c1c; border-radius: 10px; font-size: 13px; line-height: 1.5; }
 .summary-row--total { border-top: 1px solid #cbd5e1; padding-top: 16px; margin-top: 4px; font-size: 16px; color: #0f172a; font-weight: 700; }
 .total-price { font-size: 24px; color: #2563eb !important; font-weight: 800; }
 

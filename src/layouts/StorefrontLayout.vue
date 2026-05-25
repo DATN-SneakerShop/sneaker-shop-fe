@@ -92,6 +92,8 @@
       <router-view />
     </main>
 
+    <ChatWidget />
+
     <footer class="site-footer">
       <div class="container">
         <div class="footer-top">
@@ -207,6 +209,7 @@ import { RouterLink, useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 
 import { useAuthStore } from '@/stores/auth'
+import ChatWidget from '@/components/shop/ChatWidget.vue'
 
 const props = defineProps({
   pageTitle: {

@@ -504,6 +504,12 @@ import api from '@/api/axios'
 import { useAuthStore } from '@/stores/auth'
 import { getMyOrders, getMyOrderDetail } from '@/api/storefront-order.api'
 import { createReturnRequest } from '@/api/return-refund.api'
+import {
+  fetchVietnamProvinces,
+  fetchVietnamDistricts,
+  fetchVietnamWards,
+  findAddressUnitByName,
+} from '@/utils/vietnamAddress'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -567,35 +573,42 @@ const onImgError = (e) => {
 }
 /* ================= ============ ================= */
 
-/* ================= API BẢN ĐỒ VIỆT NAM ================= */
+/* ================= API ĐỊA CHỈ VIỆT NAM ĐỒNG BỘ ================= */
 const provincesData = ref([])
 const districtsData = ref([])
 const wardsData = ref([])
 
-const fetchVietnamProvinces = async () => {
+const loadVietnamAddressData = async () => {
   try {
-    const res = await fetch("https://provinces.open-api.vn/api/?depth=3")
-    provincesData.value = await res.json()
+    provincesData.value = await fetchVietnamProvinces()
   } catch (e) {
-    console.error("Lỗi lấy dữ liệu hành chính:", e)
+    console.error('Lỗi lấy dữ liệu hành chính mới nhất:', e)
   }
 }
 
-const onProvinceChange = () => {
+const onProvinceChange = async () => {
   addressForm.value.district = ''
   addressForm.value.ward = ''
-  const p = provincesData.value.find(x => x.name === addressForm.value.province)
-  districtsData.value = p ? p.districts : []
   wardsData.value = []
+
+  const province = findAddressUnitByName(provincesData.value, addressForm.value.province)
+  districtsData.value = province ? await fetchVietnamDistricts(province.code) : []
+
+  if (districtsData.value.length === 1 && districtsData.value[0].source === 'NEW_2025') {
+    addressForm.value.district = districtsData.value[0].name
+    await onDistrictChange()
+  }
 }
 
-const onDistrictChange = () => {
+const onDistrictChange = async () => {
   addressForm.value.ward = ''
-  const d = districtsData.value.find(x => x.name === addressForm.value.district)
-  wardsData.value = d ? d.wards : []
+
+  const province = findAddressUnitByName(provincesData.value, addressForm.value.province)
+  const district = findAddressUnitByName(districtsData.value, addressForm.value.district)
+  wardsData.value = province && district ? await fetchVietnamWards(province.code, district.code) : []
 }
 
-/* ================= KẾT THÚC API BẢN ĐỒ ================= */
+/* ================= KẾT THÚC API ĐỊA CHỈ ================= */
 
 
 const hasCustomerProfile = computed(() => Boolean(profile.value?.customerInfo?.id))
@@ -726,13 +739,27 @@ const openReturnModal = async (orderId) => {
 }
 
 const submitReturnRequest = async () => {
-  const items = returnForm.value.items
-    .filter(item => item.selected)
-    .map(item => ({ orderItemId: item.orderItemId, quantity: Number(item.returnQuantity || 0) }))
-  if (items.length === 0) {
+  const selectedItems = returnForm.value.items.filter(item => item.selected)
+  const invalidItem = selectedItems.find(item => {
+    const qty = Number(item.returnQuantity || 0)
+    return !Number.isInteger(qty) || qty <= 0 || qty > Number(item.maxReturn || 0)
+  })
+
+  if (selectedItems.length === 0) {
     message.warning('Vui lòng chọn sản phẩm cần trả hàng.')
     return
   }
+
+  if (invalidItem) {
+    message.warning(`Số lượng trả của ${invalidItem.productNameSnapshot || 'sản phẩm'} không hợp lệ.`)
+    return
+  }
+
+  const items = selectedItems.map(item => ({
+    orderItemId: item.orderItemId,
+    quantity: Number(item.returnQuantity || 0),
+  }))
+
   returnSubmitting.value = true
   try {
     await createReturnRequest({
@@ -884,7 +911,7 @@ const startCreateAddress = () => {
   showAddressForm.value = true
 }
 
-const startEditAddress = (addr) => {
+const startEditAddress = async (addr) => {
   editingAddressId.value = addr.id
   addressForm.value = {
     label: addr.label || '',
@@ -897,12 +924,11 @@ const startEditAddress = (addr) => {
     isDefault: addr.isDefault === 1,
   }
 
-  // Mồi dữ liệu Quận/Huyện dựa trên Tỉnh/Thành đang có
-  const p = provincesData.value.find(x => x.name === addr.province)
-  districtsData.value = p ? p.districts : []
+  const province = findAddressUnitByName(provincesData.value, addr.province)
+  districtsData.value = province ? await fetchVietnamDistricts(province.code) : []
 
-  const d = districtsData.value.find(x => x.name === addr.district)
-  wardsData.value = d ? d.wards : []
+  const district = findAddressUnitByName(districtsData.value, addr.district)
+  wardsData.value = province && district ? await fetchVietnamWards(province.code, district.code) : []
 
   showAddressForm.value = true
 }
@@ -993,7 +1019,7 @@ onMounted(async () => {
     return
   }
 
-  await fetchVietnamProvinces()
+  await loadVietnamAddressData()
   await loadProfile()
 })
 </script>
