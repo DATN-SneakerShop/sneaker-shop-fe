@@ -726,27 +726,13 @@ const openReturnModal = async (orderId) => {
 }
 
 const submitReturnRequest = async () => {
-  const selectedItems = returnForm.value.items.filter(item => item.selected)
-  const invalidItem = selectedItems.find(item => {
-    const qty = Number(item.returnQuantity || 0)
-    return !Number.isInteger(qty) || qty <= 0 || qty > Number(item.maxReturn || 0)
-  })
-
-  if (selectedItems.length === 0) {
+  const items = returnForm.value.items
+    .filter(item => item.selected)
+    .map(item => ({ orderItemId: item.orderItemId, quantity: Number(item.returnQuantity || 0) }))
+  if (items.length === 0) {
     message.warning('Vui lòng chọn sản phẩm cần trả hàng.')
     return
   }
-
-  if (invalidItem) {
-    message.warning(`Số lượng trả của ${invalidItem.productNameSnapshot || 'sản phẩm'} không hợp lệ.`)
-    return
-  }
-
-  const items = selectedItems.map(item => ({
-    orderItemId: item.orderItemId,
-    quantity: Number(item.returnQuantity || 0),
-  }))
-
   returnSubmitting.value = true
   try {
     await createReturnRequest({

@@ -278,7 +278,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { getErrorMessage } from '@/utils/error'
 import { useRoute, useRouter } from 'vue-router'
@@ -303,14 +303,6 @@ const error = ref('')
 
 const activeImageUrl = ref('')
 
-function scrollProductDetailToTop() {
-  nextTick(() => {
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
-    }
-  })
-}
-
 function svgPlaceholder(label = 'No Image', width = 600, height = 600) {
   const safeLabel = String(label)
     .replace(/&/g, '&amp;')
@@ -331,7 +323,6 @@ function svgPlaceholder(label = 'No Image', width = 600, height = 600) {
 const fallbackImage = svgPlaceholder('No Image')
 
 const loadProductDetail = async () => {
-  scrollProductDetailToTop()
   loading.value = true
   error.value = ''
 
@@ -364,13 +355,7 @@ const loadProductDetail = async () => {
 }
 
 onMounted(loadProductDetail)
-watch(() => route.params.id, () => {
-  quantity.value = 1
-  selectedColor.value = ''
-  selectedSize.value = ''
-  activeImageUrl.value = ''
-  loadProductDetail()
-})
+watch(() => route.params.id, loadProductDetail)
 
 const availableColors = computed(() => {
   return [...new Set(variants.value.map(v => v.colorway).filter(Boolean))]

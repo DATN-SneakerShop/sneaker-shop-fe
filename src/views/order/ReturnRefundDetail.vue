@@ -96,7 +96,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Modal, message } from 'ant-design-vue'
 import dayjs from 'dayjs'
@@ -164,38 +164,7 @@ const fetchDetail = async () => {
   }
 }
 
-const clampReturnReceiveRows = () => {
-  items.value.forEach((i) => {
-    const requested = Number(i.quantity || 0)
-    let received = Number(i.receivedQuantity || 0)
-    let restock = Number(i.restockQuantity || 0)
-
-    if (!Number.isFinite(received) || received < 0) received = 0
-    if (!Number.isFinite(restock) || restock < 0) restock = 0
-    if (received > requested) received = requested
-    if (restock > received) restock = received
-
-    i.receivedQuantity = received
-    i.restockQuantity = restock
-  })
-}
-
-watch(items, clampReturnReceiveRows, { deep: true })
-
 const receive = async () => {
-  clampReturnReceiveRows()
-  const invalidItem = items.value.find((i) => {
-    const requested = Number(i.quantity || 0)
-    const received = Number(i.receivedQuantity || 0)
-    const restock = Number(i.restockQuantity || 0)
-    return received < 0 || received > requested || restock < 0 || restock > received
-  })
-
-  if (invalidItem) {
-    message.warning('Số lượng nhận hàng trả hoặc nhập lại kho không hợp lệ.')
-    return
-  }
-
   submitting.value = true
   try {
     await receiveReturnRequest(returnId, {

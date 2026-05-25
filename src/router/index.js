@@ -11,19 +11,6 @@ import { useAuthStore } from '../stores/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
-  scrollBehavior(to, from, savedPosition) {
-    if (to.hash) {
-      return { el: to.hash, top: 88, behavior: 'smooth' }
-    }
-
-    // Khi chuyển sang trang mới, đặc biệt từ danh sách sản phẩm sang chi tiết,
-    // luôn đưa người dùng về đầu trang thay vì giữ vị trí cuộn cũ ở cuối trang.
-    if (savedPosition && to.name === from.name) {
-      return savedPosition
-    }
-
-    return { left: 0, top: 0 }
-  },
   routes: [
     { path: '/login', name: 'Login', component: Login, meta: { isPublic: true, guestOnly: true } },
     { path: '/register', name: 'Register', component: Register, meta: { isPublic: true, guestOnly: true } },
