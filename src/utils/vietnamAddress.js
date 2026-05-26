@@ -64,17 +64,7 @@ async function fetchJson(url) {
   return res.json()
 }
 
-async function fetchNewProvinces() {
-  const payload = await fetchJson(`${NEW_ADDRESS_API_BASE}/4/0.htm`)
-  const data = unwrapEsgooList(payload).map(mapUnit)
-  const units = uniqueUnits(data)
-  if (!units.length) throw new Error('New province data is empty')
-  return units.map((province) => ({
-    ...province,
-    source: 'NEW_2025',
-    districts: [],
-  }))
-}
+
 
 async function fetchLegacyProvinces() {
   const payload = await fetchJson(`${LEGACY_OPEN_API_BASE}/?depth=3`)
@@ -103,10 +93,11 @@ async function fetchLegacyProvinces() {
 export async function fetchVietnamProvinces({ force = false } = {}) {
   if (!force && provinceCache) return provinceCache
   try {
-    provinceCache = await fetchNewProvinces()
-  } catch (newApiError) {
-    console.warn('Không tải được API 34 tỉnh/phường xã mới, fallback API cũ:', newApiError)
+    // Đã fix: Bỏ API lỗi, ép hệ thống gọi API cũ để lấy đủ danh sách Quận/Huyện thực tế
     provinceCache = await fetchLegacyProvinces()
+  } catch (error) {
+    console.warn('Không tải được API địa chỉ:', error)
+    provinceCache = []
   }
   return provinceCache
 }
@@ -153,7 +144,10 @@ async function fetchNewWardsByProvince(provinceCode) {
       lastError = error
     }
   }
-  throw lastError || new Error('New ward data is empty')
+
+  // Đã fix: Trả về mảng rỗng để không bị sập trang (crash app) nếu không tìm thấy Phường/Xã
+  console.warn('API phường xã mới không phản hồi:', lastError)
+  return []
 }
 
 export async function fetchVietnamWards(provinceCode, districtCode) {
